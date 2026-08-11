@@ -11,6 +11,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
+import 'local_web_ui.dart';
 
 final _log = Logger();
 const _uuid = Uuid();
@@ -44,6 +45,20 @@ class LocalServer {
     if (_server != null) return;
 
     final router = Router();
+
+    router.get('/', (Request req) {
+      return Response.ok(
+        kLocalDashboardHtml,
+        headers: {'Content-Type': 'text/html; charset=utf-8'},
+      );
+    });
+
+    router.get('/dashboard', (Request req) {
+      return Response.ok(
+        kLocalDashboardHtml,
+        headers: {'Content-Type': 'text/html; charset=utf-8'},
+      );
+    });
 
     router.get('/health', (Request req) {
       return Response.ok(jsonEncode({'status': 'ok', 'role': 'main'}));
