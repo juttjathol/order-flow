@@ -29,7 +29,6 @@ dependencies:
   uuid: ^4.4.0
   collection: ^1.18.0
   equatable: ^2.0.5
-  blue_thermal_printer: ^1.2.3
   flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.3.1
   crypto: ^3.0.3
