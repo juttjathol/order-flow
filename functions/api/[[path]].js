@@ -123,15 +123,39 @@ export async function onRequest(context) {
     } catch (e) { return error('Could not fetch releases', 502); }
   }
 
+  // Reset admin password using JWT_SECRET as proof (recovery)
+  if (path === '/api/v1/admin/reset' && request.method === 'POST') {
+    try {
+      const body = await request.json();
+      const email = String(body.email || '').trim().toLowerCase();
+      const password = String(body.password || '');
+      const resetSecret = String(body.resetSecret || '');
+      if (!email || !password) return error('email & password required');
+      if (!resetSecret || resetSecret !== secret) {
+        return error('Invalid reset secret. Use the same value as JWT_SECRET from Cloudflare env vars.', 403);
+      }
+      const hash = await hashPassword(password);
+      const existing = await env.DB.prepare('SELECT * FROM admins WHERE email = ?').bind(email).first();
+      if (existing) {
+        await env.DB.prepare('UPDATE admins SET password_hash = ? WHERE email = ?').bind(hash, email).run();
+      } else {
+        await env.DB.prepare('DELETE FROM admins').run();
+        const id = crypto.randomUUID();
+        await env.DB.prepare('INSERT INTO admins (id, email, password_hash, name) VALUES (?, ?, ?, ?)').bind(id, email, hash, 'Admin').run();
+      }
+      return json({ ok: true, message: 'Password updated. You can log in now.' });
+    } catch (e) { return error(e.message || 'Reset failed', 500); }
+  }
+
   if (path === '/api/v1/admin/login' && request.method === 'POST') {
     try {
       const body = await request.json();
-      const { email, password } = body;
+      const email = String(body.email || '').trim().toLowerCase();
+      const password = String(body.password || '');
       if (!email || !password) return error('email & password required');
 
-      let admin = await env.DB.prepare('SELECT * FROM admins WHERE email = ?').bind(email).first();
+      let admin = await env.DB.prepare('SELECT * FROM admins WHERE lower(email) = ?').bind(email).first();
 
-      // First login: if no admins exist, create with this email/password
       if (!admin) {
         const count = await env.DB.prepare('SELECT COUNT(*) as c FROM admins').first();
         if (count && count.c === 0) {
@@ -142,9 +166,9 @@ export async function onRequest(context) {
         }
       }
 
-      if (!admin) return error('Invalid credentials', 401);
+      if (!admin) return error('Invalid credentials. Wrong email, or admin already exists under a different email. Use password reset.', 401);
       const hash = await hashPassword(password);
-      if (hash !== admin.password_hash) return error('Invalid credentials', 401);
+      if (hash !== admin.password_hash) return error('Invalid credentials. Wrong password for this email.', 401);
 
       const token = await signJwt({
         sub: admin.id, email: admin.email,
