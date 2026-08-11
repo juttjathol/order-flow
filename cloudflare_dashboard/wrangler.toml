@@ -1,0 +1,13 @@
+name = "order-flow-dashboard"
+main = "workers/index.js"
+compatibility_date = "2024-09-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "order-flow-db"
+database_id = "YOUR_D1_DATABASE_ID_HERE"   # replace after `wrangler d1 create`
+
+[vars]
+ADMIN_EMAIL = "admin@example.com"
+# Set secrets: wrangler secret put JWT_SECRET
+# GITHUB_REPO = "juttjathol/order-flow"
