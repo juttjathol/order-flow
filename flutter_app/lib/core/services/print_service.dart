@@ -2,17 +2,15 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 import 'package:logger/logger.dart';
 
 import '../models/models.dart';
 
 final _log = Logger();
 
-/// Builds ESC/POS byte commands and sends them to Network or Bluetooth thermal printers.
+/// ESC/POS printing via network (IP:9100).
+/// Bluetooth can be re-added later with a maintained package.
 class PrintService {
-  static final BlueThermalPrinter _bluetooth = BlueThermalPrinter.instance;
-
   static Uint8List buildKitchenTicket({
     required Order order,
     required String restaurantName,
@@ -28,7 +26,6 @@ class PrintService {
     write('$restaurantName\n');
     write('KITCHEN TICKET\n');
     cmd([0x1B, 0x61, 0x00]);
-
     write('--------------------------------\n');
     write('Order #: ${order.orderNumber}\n');
     if (order.tableNumber != null) write('TABLE: ${order.tableNumber}\n');
@@ -54,11 +51,9 @@ class PrintService {
     if (order.notes != null && order.notes!.isNotEmpty) {
       write('Order note: ${order.notes}\n');
     }
-
     write('--------------------------------\n');
     write('\n\n\n');
     cmd([0x1D, 0x56, 0x00]);
-
     return buffer.toBytes();
   }
 
@@ -76,7 +71,6 @@ class PrintService {
     write('$restaurantName\n');
     write('RECEIPT\n');
     cmd([0x1B, 0x61, 0x00]);
-
     write('--------------------------------\n');
     write('Order #: ${order.orderNumber}\n');
     if (order.tableNumber != null) write('Table: ${order.tableNumber}\n');
@@ -84,31 +78,12 @@ class PrintService {
     write('--------------------------------\n');
 
     for (final item in order.items) {
-      final name = '${item.quantity}x ${item.nameSnapshot}';
-      final price = item.lineTotal.asDouble.toStringAsFixed(2);
-      write('$name  $price\n');
-      for (final mod in item.selectedModifiers) {
-        write('   + ${mod.name}\n');
-      }
+      write('${item.quantity}x ${item.nameSnapshot}  ${item.lineTotal.asDouble.toStringAsFixed(2)}\n');
     }
-
     write('--------------------------------\n');
-    write('Subtotal: ${order.subtotal.asDouble.toStringAsFixed(2)}\n');
-    if (order.discount != null) {
-      write('Discount: -${order.discount!.asDouble.toStringAsFixed(2)}\n');
-    }
-    if (order.tax != null) {
-      write('Tax: ${order.tax!.asDouble.toStringAsFixed(2)}\n');
-    }
-    if (order.serviceCharge != null) {
-      write('Service: ${order.serviceCharge!.asDouble.toStringAsFixed(2)}\n');
-    }
     write('TOTAL: ${order.total.asDouble.toStringAsFixed(2)}\n');
-    write('--------------------------------\n');
-    write('Thank you!\n');
-    write('\n\n\n');
+    write('Thank you!\n\n\n\n');
     cmd([0x1D, 0x56, 0x00]);
-
     return buffer.toBytes();
   }
 
@@ -130,57 +105,6 @@ class PrintService {
     }
   }
 
-  static Future<List<BluetoothDevice>> getBondedDevices() async {
-    try {
-      final devices = await _bluetooth.getBondedDevices();
-      return devices ?? [];
-    } catch (e) {
-      _log.e('Failed to list Bluetooth devices: $e');
-      return [];
-    }
-  }
-
-  static Future<bool> isBluetoothConnected() async {
-    try {
-      return await _bluetooth.isConnected ?? false;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  static Future<bool> connectBluetooth(BluetoothDevice device) async {
-    try {
-      final connected = await _bluetooth.connect(device);
-      _log.i('Bluetooth connect result: $connected → ${device.name}');
-      return connected ?? false;
-    } catch (e) {
-      _log.e('Bluetooth connect failed: $e');
-      return false;
-    }
-  }
-
-  static Future<void> disconnectBluetooth() async {
-    try {
-      await _bluetooth.disconnect();
-    } catch (_) {}
-  }
-
-  static Future<bool> sendToBluetoothPrinter(Uint8List data) async {
-    try {
-      final connected = await isBluetoothConnected();
-      if (!connected) {
-        _log.w('No Bluetooth printer connected');
-        return false;
-      }
-      await _bluetooth.writeBytes(data);
-      _log.i('Printed ${data.length} bytes via Bluetooth');
-      return true;
-    } catch (e) {
-      _log.e('Bluetooth print failed: $e');
-      return false;
-    }
-  }
-
   static Future<bool> printKitchenTicket({
     required Order order,
     required String restaurantName,
@@ -193,14 +117,10 @@ class PrintService {
       restaurantName: restaurantName,
       onlyNewItems: onlyNewItems,
     );
-
-    if (useBluetooth) {
-      return sendToBluetoothPrinter(bytes);
-    }
     if (networkIp != null && networkIp.isNotEmpty) {
       return sendToNetworkPrinter(ip: networkIp, data: bytes);
     }
-    _log.w('No printer configured');
+    _log.w('No network printer configured');
     return false;
   }
 }
