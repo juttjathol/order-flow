@@ -5,45 +5,95 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Optional existing tag to attach APK (e.g. v1.0.1). Leave empty for artifact only.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
 
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    timeout-minutes: 45
 
-      - name: Set up Java
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
-          channel: 'stable'
+          channel: stable
           cache: true
+
+      - name: Ensure Android platform files exist
+        working-directory: flutter_app
+        run: |
+          if [ ! -d android ]; then
+            echo "android/ missing — generating platform folders"
+            flutter create . --project-name order_flow --platforms=android
+          fi
+
+      - name: Gradle memory settings
+        working-directory: flutter_app
+        run: |
+          mkdir -p android
+          cat >> android/gradle.properties << 'PROPS'
+
+          org.gradle.jvmargs=-Xmx2g -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.workers.max=2
+          PROPS
 
       - name: Install dependencies
         working-directory: flutter_app
         run: flutter pub get
 
-      - name: Build APK
+      - name: Code generation
         working-directory: flutter_app
-        run: flutter build apk --release
+        run: |
+          if grep -q "build_runner" pubspec.yaml; then
+            dart run build_runner build --delete-conflicting-outputs || true
+          fi
+
+      - name: Build release APK
+        working-directory: flutter_app
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: order-flow-apk
           path: flutter_app/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
 
-      - name: Create GitHub Release
+      - name: Attach APK to GitHub Release (tag push)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: flutter_app/build/app/outputs/flutter-apk/app-release.apk
           generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach APK to existing release (manual run with tag)
+        if: github.event_name == 'workflow_dispatch' && inputs.tag_name != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          files: flutter_app/build/app/outputs/flutter-apk/app-release.apk
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
