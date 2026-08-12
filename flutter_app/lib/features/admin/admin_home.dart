@@ -1,167 +1,153 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
+import 'package:qr_flutter/qr_flutter.dart';
+import '../../core/models/models.dart';
+import '../../core/state/app_controller.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/animated_widgets.dart';
 
-class AdminHome extends StatefulWidget {
+class AdminHome extends ConsumerStatefulWidget {
   const AdminHome({super.key});
   @override
-  State<AdminHome> createState() => _AdminHomeState();
+  ConsumerState<AdminHome> createState() => _AdminHomeState();
 }
 
-class _AdminHomeState extends State<AdminHome> {
-  String localIp = '192.168.1.10';
-  bool serverRunning = false;
-  int port = 8787;
+class _AdminHomeState extends ConsumerState<AdminHome> {
+  bool _starting = false;
 
-  void _toggleServer() {
-    setState(() => serverRunning = !serverRunning);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(serverRunning ? 'Server started · other devices can join' : 'Server stopped'),
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+  Future<void> _toggle() async {
+    final app = ref.read(appControllerProvider);
+    setState(() => _starting = true);
+    try {
+      if (app.serverRunning) await app.stopMain();
+      else await app.startAsMain();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Server error: $e')));
+    }
+    if (mounted) setState(() => _starting = false);
+  }
+
+  void _menuEditor() {
+    final app = ref.read(appControllerProvider);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return Container(
+          height: MediaQuery.of(ctx).size.height * 0.85,
+          padding: const EdgeInsets.all(16),
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          child: Column(children: [
+            const Text('Menu', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            Expanded(child: ListView(children: app.menuItems.map((m) => ListTile(
+              title: Text(m.name),
+              subtitle: Text('\$${m.price.asDouble.toStringAsFixed(2)}'),
+              trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () { app.deleteMenuItem(m.id); Navigator.pop(ctx); }),
+            )).toList())),
+            FilledButton.icon(
+              onPressed: () {
+                final name = TextEditingController();
+                final price = TextEditingController(text: '10.00');
+                showDialog(context: context, builder: (dCtx) => AlertDialog(
+                  title: const Text('Add item'),
+                  content: Column(mainAxisSize: MainAxisSize.min, children: [
+                    TextField(controller: name, decoration: const InputDecoration(labelText: 'Name')),
+                    TextField(controller: price, decoration: const InputDecoration(labelText: 'Price'), keyboardType: TextInputType.number),
+                  ]),
+                  actions: [
+                    FilledButton(onPressed: () {
+                      final catId = app.categories.isNotEmpty ? app.categories.first.id : 'general';
+                      if (app.categories.isEmpty) app.upsertCategory(MenuCategory(id: catId, name: 'General'));
+                      final cents = ((double.tryParse(price.text) ?? 0) * 100).round();
+                      app.upsertMenuItem(MenuItem(categoryId: catId, name: name.text.trim(), price: Money(cents)));
+                      Navigator.pop(dCtx); Navigator.pop(ctx);
+                    }, child: const Text('Add')),
+                  ],
+                ));
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add menu item'),
+            ),
+          ]),
+        );
+      },
+    );
+  }
+
+  void _inventory() {
+    final app = ref.read(appControllerProvider);
+    showModalBottomSheet(context: context, isScrollControlled: true, builder: (ctx) => DraggableScrollableSheet(
+      expand: false, initialChildSize: 0.7,
+      builder: (_, sc) => ListView.builder(controller: sc, itemCount: app.inventory.length, itemBuilder: (_, i) {
+        final inv = app.inventory[i];
+        return ListTile(
+          title: Text(inv.name),
+          subtitle: Text('Stock: ${inv.quantity.toStringAsFixed(0)}'),
+          trailing: inv.quantity <= inv.lowStockThreshold ? const Text('LOW', style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.w800)) : null,
+          onTap: () {
+            final c = TextEditingController(text: inv.quantity.toStringAsFixed(0));
+            showDialog(context: context, builder: (d) => AlertDialog(
+              title: Text(inv.name),
+              content: TextField(controller: c, keyboardType: TextInputType.number),
+              actions: [FilledButton(onPressed: () { app.setInventoryQty(inv.id, double.tryParse(c.text) ?? inv.quantity); Navigator.pop(d); Navigator.pop(ctx); }, child: const Text('Save'))],
+            ));
+          },
+        );
+      }),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final joinUrl = 'http://$localIp:$port';
-
+    final app = ref.watch(appControllerProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: Row(children: [
-          Container(
-            width: 32, height: 32,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(colors: [Color(0xFF0EA5E9), Color(0xFF14B8A6)]),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.dns_rounded, color: Colors.white, size: 18),
+      appBar: AppBar(title: const Text('Main Device'), actions: [
+        Padding(padding: const EdgeInsets.only(right: 8), child: FilledButton.tonalIcon(
+          onPressed: _starting ? null : _toggle,
+          icon: Icon(app.serverRunning ? Icons.stop_rounded : Icons.play_arrow_rounded),
+          label: Text(_starting ? '...' : (app.serverRunning ? 'Stop' : 'Start')),
+        )),
+      ]),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: app.serverRunning ? const [Color(0xFF0EA5E9), Color(0xFF14B8A6)] : const [Color(0xFF64748B), Color(0xFF475569)]),
+            borderRadius: BorderRadius.circular(20),
           ),
-          const SizedBox(width: 10),
-          const Text('Main Device'),
+          child: Column(children: [
+            Row(children: [PulseDot(color: Colors.white, size: 12), const SizedBox(width: 10), Text(app.serverRunning ? 'Server running' : 'Server offline', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16))]),
+            const SizedBox(height: 12),
+            Text(app.joinUrl, style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 18, fontWeight: FontWeight.w600)),
+            const Text('PC: open this URL for local dashboard', style: TextStyle(color: Colors.white70, fontSize: 12)),
+            if (app.serverRunning) ...[
+              const SizedBox(height: 12),
+              Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                child: QrImageView(data: 'orderflow://join?host=${app.localIp}&port=${app.port}', size: 140, backgroundColor: Colors.white)),
+            ],
+            TextButton.icon(onPressed: () { Clipboard.setData(ClipboardData(text: app.joinUrl)); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied'))); }, icon: const Icon(Icons.copy, color: Colors.white, size: 18), label: const Text('Copy', style: TextStyle(color: Colors.white))),
+          ]),
+        ),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(child: StatCard(label: 'Open orders', value: '${app.openOrders.length}', icon: Icons.receipt_long, color: AppColors.primary)),
+          const SizedBox(width: 12),
+          Expanded(child: StatCard(label: 'Devices', value: '${app.devices.length}', icon: Icons.devices, color: AppColors.accent)),
         ]),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilledButton.tonalIcon(
-              onPressed: _toggleServer,
-              icon: Icon(serverRunning ? Icons.stop_rounded : Icons.play_arrow_rounded),
-              label: Text(serverRunning ? 'Stop' : 'Start'),
-              style: FilledButton.styleFrom(
-                backgroundColor: serverRunning ? AppColors.danger.withValues(alpha: 0.15) : AppColors.success.withValues(alpha: 0.15),
-                foregroundColor: serverRunning ? AppColors.danger : AppColors.success,
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: [
-          FadeSlideIn(
-            index: 0,
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: serverRunning
-                      ? const [Color(0xFF0EA5E9), Color(0xFF14B8A6)]
-                      : isDark ? const [Color(0xFF334155), Color(0xFF1E293B)] : const [Color(0xFF94A3B8), Color(0xFF64748B)],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: (serverRunning ? AppColors.primary : Colors.black).withValues(alpha: 0.25), blurRadius: 20, offset: const Offset(0, 8))],
-              ),
-              child: Column(children: [
-                Row(children: [
-                  PulseDot(color: serverRunning ? Colors.white : Colors.white54, size: 12),
-                  const SizedBox(width: 10),
-                  Text(serverRunning ? 'Server running' : 'Server offline', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 16)),
-                  const Spacer(),
-                  if (serverRunning)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
-                      child: Text('Port $port', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-                    ),
-                ]),
-                const SizedBox(height: 16),
-                Text(joinUrl, style: const TextStyle(color: Colors.white, fontFamily: 'monospace', fontSize: 18, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 6),
-                Text('Open this URL on a PC browser for the full web dashboard',
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 12), textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-                  child: QrImageView(data: 'orderflow://join?host=$localIp&port=$port', size: 140, backgroundColor: Colors.white),
-                ),
-                TextButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: joinUrl));
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Address copied'), behavior: SnackBarBehavior.floating));
-                  },
-                  icon: const Icon(Icons.copy_rounded, color: Colors.white, size: 18),
-                  label: const Text('Copy address', style: TextStyle(color: Colors.white)),
-                ),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 20),
-          FadeSlideIn(index: 1, child: Row(children: [
-            Expanded(child: StatCard(label: 'Open orders', value: '0', icon: Icons.receipt_long_rounded, color: AppColors.primary)),
-            const SizedBox(width: 12),
-            Expanded(child: StatCard(label: 'Devices', value: '1', icon: Icons.devices_rounded, color: AppColors.accent)),
-          ])),
-          const SizedBox(height: 12),
-          FadeSlideIn(index: 2, child: StatCard(label: "Today's sales", value: '0.00', icon: Icons.trending_up_rounded, color: AppColors.success)),
-          const SizedBox(height: 24),
-          Text('Manage', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Colors.grey.shade600)),
-          const SizedBox(height: 12),
-          ...[
-            (Icons.restaurant_menu_rounded, [Color(0xFF0EA5E9), Color(0xFF0284C7)], 'Menu Management', 'Categories, items, prices'),
-            (Icons.inventory_2_rounded, [Color(0xFF14B8A6), Color(0xFF0D9488)], 'Inventory', 'Stock · auto-deduct on orders'),
-            (Icons.devices_rounded, [Color(0xFF8B5CF6), Color(0xFF7C3AED)], 'Connected Devices', 'Phones and tablets online'),
-            (Icons.receipt_long_rounded, [Color(0xFFF59E0B), Color(0xFFD97706)], 'Orders and Reports', 'Sales, invoices, history'),
-            (Icons.print_rounded, [Color(0xFF64748B), Color(0xFF475569)], 'Printers', 'Kitchen and cashier network printers'),
-            (Icons.settings_rounded, [Color(0xFFEC4899), Color(0xFFDB2777)], 'Settings', 'Tax, currency, restaurant name'),
-          ].asMap().entries.map((e) {
-            final item = e.value;
-            return FadeSlideIn(
-              index: 3 + e.key,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: ScaleTap(
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${item.$3} — coming next'), behavior: SnackBarBehavior.floating)),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
-                    ),
-                    child: Row(children: [
-                      GradientIconBox(icon: item.$1, colors: item.$2, size: 44),
-                      const SizedBox(width: 14),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(item.$3, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                        Text(item.$4, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                      ])),
-                      Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
-                    ]),
-                  ),
-                ),
-              ),
-            );
-          }),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(onPressed: () => context.go('/'), icon: const Icon(Icons.home_rounded), label: const Text('Back to roles')),
-        ],
-      ),
+        const SizedBox(height: 12),
+        StatCard(label: "Today's sales", value: '\$${app.todaySales.toStringAsFixed(2)}', icon: Icons.trending_up, color: AppColors.success),
+        const SizedBox(height: 16),
+        Card(child: ListTile(leading: const Icon(Icons.restaurant_menu, color: AppColors.primary), title: const Text('Menu'), onTap: _menuEditor)),
+        Card(child: ListTile(leading: const Icon(Icons.inventory_2, color: AppColors.primary), title: const Text('Inventory'), onTap: _inventory)),
+        Card(child: ListTile(leading: const Icon(Icons.receipt_long, color: AppColors.primary), title: Text('Orders (${app.orders.length})'), onTap: () {
+          showModalBottomSheet(context: context, builder: (_) => ListView(children: app.orders.reversed.map((o) => ListTile(title: Text('#${o.orderNumber} · ${o.tableNumber ?? '—'}'), subtitle: Text('${o.status.name} · \$${o.total.asDouble.toStringAsFixed(2)}'))).toList()));
+        })),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(onPressed: () => context.go('/'), icon: const Icon(Icons.home), label: const Text('Back to roles')),
+      ]),
     );
   }
 }
