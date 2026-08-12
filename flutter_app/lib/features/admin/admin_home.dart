@@ -100,6 +100,39 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
     ));
   }
 
+  void _settings() {
+    final app = ref.read(appControllerProvider);
+    final name = TextEditingController(text: app.restaurantName);
+    final kitchen = TextEditingController(text: app.kitchenPrinterIp ?? '');
+    final cashier = TextEditingController(text: app.cashierPrinterIp ?? '');
+    showDialog(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Settings'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: name, decoration: const InputDecoration(labelText: 'Restaurant name')),
+            TextField(controller: kitchen, decoration: const InputDecoration(labelText: 'Kitchen printer IP', hintText: '192.168.1.50')),
+            TextField(controller: cashier, decoration: const InputDecoration(labelText: 'Cashier printer IP', hintText: '192.168.1.51')),
+            const SizedBox(height: 8),
+            const Text('Network ESC/POS on port 9100', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              await app.saveSettings(name: name.text.trim(), kitchenIp: kitchen.text.trim(), cashierIp: cashier.text.trim());
+              if (d.mounted) Navigator.pop(d);
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Settings saved')));
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = ref.watch(appControllerProvider);
@@ -142,10 +175,13 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
         const SizedBox(height: 16),
         Card(child: ListTile(leading: const Icon(Icons.restaurant_menu, color: AppColors.primary), title: const Text('Menu'), onTap: _menuEditor)),
         Card(child: ListTile(leading: const Icon(Icons.inventory_2, color: AppColors.primary), title: const Text('Inventory'), onTap: _inventory)),
+        Card(child: ListTile(leading: const Icon(Icons.print, color: AppColors.primary), title: const Text('Printers & restaurant'), onTap: _settings)),
         Card(child: ListTile(leading: const Icon(Icons.receipt_long, color: AppColors.primary), title: Text('Orders (${app.orders.length})'), onTap: () {
           showModalBottomSheet(context: context, builder: (_) => ListView(children: app.orders.reversed.map((o) => ListTile(title: Text('#${o.orderNumber} · ${o.tableNumber ?? '—'}'), subtitle: Text('${o.status.name} · \$${o.total.asDouble.toStringAsFixed(2)}'))).toList()));
         })),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        Text('Today: ${app.todayOrderCount} orders', style: const TextStyle(color: Colors.grey)),
+        const SizedBox(height: 8),
         OutlinedButton.icon(onPressed: () => context.go('/'), icon: const Icon(Icons.home), label: const Text('Back to roles')),
       ]),
     );
