@@ -1,160 +1,120 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/models/models.dart';
+import '../../core/state/app_controller.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/animated_widgets.dart';
 
-class KitchenHome extends StatefulWidget {
+class KitchenHome extends ConsumerStatefulWidget {
   const KitchenHome({super.key});
-
   @override
-  State<KitchenHome> createState() => _KitchenHomeState();
+  ConsumerState<KitchenHome> createState() => _KitchenHomeState();
 }
 
-class _KitchenHomeState extends State<KitchenHome> {
-  final tickets = <_Ticket>[
-    _Ticket(1, 'T-04', ['Grilled Chicken x1', 'Fries x2'], 'New', DateTime.now().subtract(const Duration(minutes: 2))),
-    _Ticket(2, 'T-07', ['Beef Burger x2', 'Cola x2'], 'Preparing', DateTime.now().subtract(const Duration(minutes: 8))),
-    _Ticket(3, 'T-02', ['Pasta Alfredo x1', 'Salad x1'], 'New', DateTime.now().subtract(const Duration(minutes: 1))),
-  ];
+class _KitchenHomeState extends ConsumerState<KitchenHome> {
+  final _ip = TextEditingController();
 
-  Color _statusColor(String s) {
-    switch (s) {
-      case 'New':
-        return AppColors.danger;
-      case 'Preparing':
-        return AppColors.warning;
-      case 'Ready':
-        return AppColors.success;
-      default:
-        return Colors.grey;
-    }
+  Future<void> _ensureConnected() async {
+    final app = ref.read(appControllerProvider);
+    if (app.isMain || app.clientConnected) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Connect to Main'),
+        content: TextField(controller: _ip, decoration: const InputDecoration(labelText: 'Main IP')),
+        actions: [
+          FilledButton(
+            onPressed: () async {
+              await app.connectToMain(_ip.text.trim(), asRole: DeviceRole.kitchen);
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Connect'),
+          ),
+        ],
+      ),
+    );
   }
 
-  void _advance(_Ticket t) {
-    setState(() {
-      if (t.status == 'New') {
-        t.status = 'Preparing';
-      } else if (t.status == 'Preparing') {
-        t.status = 'Ready';
-      } else {
-        tickets.remove(t);
-      }
-    });
+  Color _color(OrderStatus s) {
+    switch (s) {
+      case OrderStatus.open: return AppColors.danger;
+      case OrderStatus.preparing: return AppColors.warning;
+      case OrderStatus.ready: return AppColors.success;
+      default: return Colors.grey;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final app = ref.watch(appControllerProvider);
+    final tickets = app.kitchenOrders;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Kitchen'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.home_rounded),
-            onPressed: () => context.go('/'),
-          ),
+          IconButton(icon: const Icon(Icons.link), onPressed: _ensureConnected),
+          IconButton(icon: const Icon(Icons.home), onPressed: () => context.go('/')),
         ],
       ),
       body: tickets.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.soup_kitchen_rounded, size: 64, color: Colors.grey.shade400),
-                  const SizedBox(height: 12),
-                  Text('No active tickets', style: TextStyle(color: Colors.grey.shade600)),
-                ],
-              ),
-            )
+          ? const Center(child: Text('No active kitchen tickets'))
           : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: tickets.length,
               itemBuilder: (_, i) {
-                final t = tickets[i];
-                final color = _statusColor(t.status);
-                final mins = DateTime.now().difference(t.created).inMinutes;
+                final o = tickets[i];
+                final c = _color(o.status);
                 return FadeSlideIn(
                   index: i,
-                  child: Container(
+                  child: Card(
                     margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isDark ? const Color(0xFF334155) : Colors.grey.shade200,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        color: c.withValues(alpha: 0.12),
+                        child: Row(children: [
+                          Text('#${o.orderNumber}', style: TextStyle(fontWeight: FontWeight.w800, color: c)),
+                          const SizedBox(width: 8),
+                          Text(o.tableNumber ?? o.ticketNumber ?? '—', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          const Spacer(),
+                          Text(o.status.name, style: TextStyle(color: c, fontWeight: FontWeight.w700)),
+                        ]),
                       ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: color.withValues(alpha: 0.12),
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          ...o.items.map((l) => Text('• ${l.nameSnapshot} ×${l.quantity}')),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: c),
+                            onPressed: () {
+                              if (o.status == OrderStatus.open) {
+                                app.updateOrderStatus(o.id, OrderStatus.preparing);
+                              } else if (o.status == OrderStatus.preparing) {
+                                app.updateOrderStatus(o.id, OrderStatus.ready);
+                              } else {
+                                app.updateOrderStatus(o.id, OrderStatus.served);
+                              }
+                            },
+                            child: Text(o.status == OrderStatus.open
+                                ? 'Start preparing'
+                                : o.status == OrderStatus.preparing
+                                    ? 'Mark ready'
+                                    : 'Clear'),
                           ),
-                          child: Row(
-                            children: [
-                              Text('#${t.id}', style: TextStyle(fontWeight: FontWeight.w800, color: color, fontSize: 16)),
-                              const SizedBox(width: 10),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
-                                child: Text(t.table, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
-                              ),
-                              const Spacer(),
-                              Text('${mins}m', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(color: color.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
-                                child: Text(t.status, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 11)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              ...t.items.map((line) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 6),
-                                    child: Row(children: [
-                                      const Icon(Icons.circle, size: 6, color: AppColors.primary),
-                                      const SizedBox(width: 10),
-                                      Text(line, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
-                                    ]),
-                                  )),
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                width: double.infinity,
-                                child: FilledButton(
-                                  onPressed: () => _advance(t),
-                                  style: FilledButton.styleFrom(backgroundColor: color, foregroundColor: Colors.white),
-                                  child: Text(t.status == 'New' ? 'Start preparing' : t.status == 'Preparing' ? 'Mark ready' : 'Clear ticket'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                        ]),
+                      ),
+                    ]),
                   ),
                 );
               },
             ),
+      floatingActionButton: (!app.isMain && !app.clientConnected)
+          ? FloatingActionButton.extended(onPressed: _ensureConnected, label: const Text('Connect'), icon: const Icon(Icons.link))
+          : null,
     );
   }
-}
-
-class _Ticket {
-  final int id;
-  final String table;
-  final List<String> items;
-  String status;
-  final DateTime created;
-  _Ticket(this.id, this.table, this.items, this.status, this.created);
 }
