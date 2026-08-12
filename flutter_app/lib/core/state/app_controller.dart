@@ -10,6 +10,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/models.dart';
 import '../models/models_extra.dart';
 import '../network/local_server.dart';
+import '../services/print_service.dart';
 
 const _uuid = Uuid();
 
@@ -20,6 +21,8 @@ class AppController extends ChangeNotifier {
   int port = 8787, _orderSeq = 1;
   String deviceId = _uuid.v4(), deviceName = 'Device';
   DeviceRole role = DeviceRole.orderTaker;
+  String restaurantName = 'My Restaurant';
+  String? kitchenPrinterIp, cashierPrinterIp;
   List<MenuCategory> categories = [];
   List<MenuItem> menuItems = [];
   List<Order> orders = [];
@@ -29,6 +32,7 @@ class AppController extends ChangeNotifier {
   LocalServer? _server;
   WebSocketChannel? _ws;
   StreamSubscription? _wsSub;
+  Timer? _persistDebounce;
 
   String get joinUrl => 'http://${localIp ?? '0.0.0.0'}:$port';
   List<Order> get openOrders => orders.where((o) => !o.isPaid && o.status != OrderStatus.cancelled).toList();
@@ -37,17 +41,27 @@ class AppController extends ChangeNotifier {
     final t = DateTime.now().toUtc();
     return orders.where((o) => o.isPaid && o.paidAt != null && o.paidAt!.year == t.year && o.paidAt!.month == t.month && o.paidAt!.day == t.day).fold<double>(0, (s, o) => s + o.total.asDouble);
   }
+  int get todayOrderCount {
+    final t = DateTime.now().toUtc();
+    return orders.where((o) { final c = o.createdAt; return c.year == t.year && c.month == t.month && c.day == t.day; }).length;
+  }
 
   Future<void> init() async {
     final p = await SharedPreferences.getInstance();
     deviceId = p.getString('device_id') ?? deviceId;
     await p.setString('device_id', deviceId);
     deviceName = p.getString('device_name') ?? 'Tablet-${deviceId.substring(0, 4)}';
+    restaurantName = p.getString('restaurant_name') ?? restaurantName;
+    kitchenPrinterIp = p.getString('kitchen_printer_ip');
+    cashierPrinterIp = p.getString('cashier_printer_ip');
     final k = p.getString('license_key');
     if (k != null) {
       license = LicenseInfo(key: k, customerId: p.getString('license_customer_id') ?? '', customerName: p.getString('license_customer_name') ?? '', expiresAt: DateTime.tryParse(p.getString('license_expires') ?? '') ?? DateTime.now().add(const Duration(days: 30)), isActive: true);
     }
-    _seed();
+    final saved = p.getString('main_state_json');
+    if (saved != null && saved.isNotEmpty) {
+      try { applyState(jsonDecode(saved) as Map<String, dynamic>); } catch (_) { _seed(); }
+    } else { _seed(); }
     notifyListeners();
   }
 
@@ -71,12 +85,25 @@ class AppController extends ChangeNotifier {
     inventory = menuItems.map((m) => InventoryItem(name: m.name, quantity: 100, lowStockThreshold: 10, linkedMenuItemId: m.id)).toList();
   }
 
+  Future<void> _persist() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setString('restaurant_name', restaurantName);
+      if (kitchenPrinterIp != null) await p.setString('kitchen_printer_ip', kitchenPrinterIp!); else await p.remove('kitchen_printer_ip');
+      if (cashierPrinterIp != null) await p.setString('cashier_printer_ip', cashierPrinterIp!); else await p.remove('cashier_printer_ip');
+      if (isMain || serverRunning) await p.setString('main_state_json', jsonEncode(fullState()));
+    } catch (_) {}
+  }
+
+  void _schedulePersist() {
+    _persistDebounce?.cancel();
+    _persistDebounce = Timer(const Duration(milliseconds: 400), _persist);
+  }
+
   Future<String?> _ip() async {
     try {
       for (final i in await NetworkInterface.list(type: InternetAddressType.IPv4, includeLinkLocal: false)) {
-        for (final a in i.addresses) {
-          if (!a.isLoopback) return a.address;
-        }
+        for (final a in i.addresses) { if (!a.isLoopback) return a.address; }
       }
     } catch (_) {}
     return null;
@@ -89,6 +116,9 @@ class AppController extends ChangeNotifier {
     'inventory': inventory.map((i) => i.toJson()).toList(),
     'orderSeq': _orderSeq,
     'devices': devices.map((d) => d.toJson()).toList(),
+    'restaurantName': restaurantName,
+    'kitchenPrinterIp': kitchenPrinterIp,
+    'cashierPrinterIp': cashierPrinterIp,
   };
 
   void applyState(Map<String, dynamic> s) {
@@ -97,6 +127,19 @@ class AppController extends ChangeNotifier {
     orders = (s['orders'] as List? ?? []).map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))).toList();
     inventory = (s['inventory'] as List? ?? []).map((e) => InventoryItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
     _orderSeq = s['orderSeq'] as int? ?? _orderSeq;
+    if (s['restaurantName'] is String) restaurantName = s['restaurantName'] as String;
+    if (s.containsKey('kitchenPrinterIp')) kitchenPrinterIp = s['kitchenPrinterIp'] as String?;
+    if (s.containsKey('cashierPrinterIp')) cashierPrinterIp = s['cashierPrinterIp'] as String?;
+    if (categories.isEmpty) _seed();
+    notifyListeners();
+  }
+
+  Future<void> saveSettings({String? name, String? kitchenIp, String? cashierIp}) async {
+    if (name != null) restaurantName = name;
+    if (kitchenIp != null) kitchenPrinterIp = kitchenIp.isEmpty ? null : kitchenIp;
+    if (cashierIp != null) cashierPrinterIp = cashierIp.isEmpty ? null : cashierIp;
+    await _persist();
+    if (isMain) _server?.broadcast('state.replace', fullState());
     notifyListeners();
   }
 
@@ -107,25 +150,35 @@ class AppController extends ChangeNotifier {
     await _server!.start();
     serverRunning = true;
     devices = [DeviceInfo(id: deviceId, name: deviceName, role: DeviceRole.main, ip: localIp, isOnline: true)];
+    await _persist();
     notifyListeners();
   }
 
   Future<void> stopMain() async {
+    await _persist();
     await _server?.stop(); _server = null; serverRunning = false; notifyListeners();
   }
 
   Future<void> _onEvent(String type, Map<String, dynamic> payload, String did) async {
     if (type == 'order.create') {
       final order = Order.fromJson(payload);
-      orders = [...orders, order];
-      _orderSeq++;
-      _deduct(order);
+      if (!orders.any((o) => o.id == order.id)) {
+        orders = [...orders, order];
+        _orderSeq = (int.tryParse(order.orderNumber) ?? _orderSeq) + 1;
+        _deduct(order);
+        unawaited(_printKitchen(order));
+      }
       _server?.broadcast('order.upsert', order.toJson());
     } else if (type == 'order.update') {
       final order = Order.fromJson(payload);
       orders = orders.map((o) => o.id == order.id ? order : o).toList();
       _server?.broadcast('order.upsert', order.toJson());
+    } else if (type == 'order.add_items') {
+      final orderId = payload['orderId'] as String?;
+      final items = (payload['items'] as List? ?? []).map((e) => OrderItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      if (orderId != null && items.isNotEmpty) _applyAddItems(orderId, items);
     }
+    _schedulePersist();
     notifyListeners();
   }
 
@@ -138,7 +191,17 @@ class AppController extends ChangeNotifier {
         return inv;
       }).toList();
     }
-    _server?.broadcast('state.replace', fullState());
+  }
+
+  Future<void> _printKitchen(Order order) async {
+    if (kitchenPrinterIp == null || kitchenPrinterIp!.isEmpty) return;
+    await PrintService.printKitchenTicket(order: order, restaurantName: restaurantName, networkIp: kitchenPrinterIp);
+  }
+
+  Future<void> _printReceipt(Order order) async {
+    if (cashierPrinterIp == null || cashierPrinterIp!.isEmpty) return;
+    final bytes = PrintService.buildPaymentTicket(order: order, restaurantName: restaurantName);
+    await PrintService.sendToNetworkPrinter(ip: cashierPrinterIp!, data: bytes);
   }
 
   Future<bool> connectToMain(String host, {DeviceRole asRole = DeviceRole.orderTaker}) async {
@@ -162,9 +225,7 @@ class AppController extends ChangeNotifier {
             final idx = orders.indexWhere((o) => o.id == order.id);
             orders = idx >= 0 ? ([...orders]..[idx] = order) : [...orders, order];
             notifyListeners();
-          } else if (type == 'state.replace') {
-            applyState(payload);
-          }
+          } else if (type == 'state.replace') { applyState(payload); }
         } catch (_) {}
       }, onDone: () { clientConnected = false; notifyListeners(); });
       _ws!.sink.add(jsonEncode({'type': 'identify', 'deviceId': deviceId, 'payload': DeviceInfo(id: deviceId, name: deviceName, role: asRole, isOnline: true).toJson()}));
@@ -186,23 +247,47 @@ class AppController extends ChangeNotifier {
     final order = Order(orderNumber: '$_orderSeq', tableNumber: tableNumber, ticketNumber: ticketNumber, items: items, status: OrderStatus.open, createdByDeviceId: deviceId);
     _orderSeq++;
     orders = [...orders, order];
-    if (isMain) { _deduct(order); _server?.broadcast('order.upsert', order.toJson()); }
+    if (isMain) { _deduct(order); _server?.broadcast('order.upsert', order.toJson()); unawaited(_printKitchen(order)); _schedulePersist(); }
     else { _send('order.create', order.toJson()); }
     notifyListeners();
     return order;
   }
 
+  Order? findOpenByTable(String table) {
+    final t = table.trim().toLowerCase();
+    if (t.isEmpty) return null;
+    try { return openOrders.firstWhere((o) => (o.tableNumber ?? '').trim().toLowerCase() == t); } catch (_) { return null; }
+  }
+
+  void addItemsToOrder(String orderId, List<OrderItem> extra) {
+    if (extra.isEmpty) return;
+    if (isMain) { _applyAddItems(orderId, extra); }
+    else {
+      _send('order.add_items', {'orderId': orderId, 'items': extra.map((e) => e.toJson()).toList()});
+      _applyAddItems(orderId, extra);
+    }
+  }
+
+  void _applyAddItems(String orderId, List<OrderItem> extra) {
+    if (!orders.any((o) => o.id == orderId)) return;
+    orders = orders.map((o) => o.id != orderId ? o : o.copyWith(items: [...o.items, ...extra], status: OrderStatus.open)).toList();
+    final order = orders.firstWhere((o) => o.id == orderId);
+    final delta = Order(orderNumber: order.orderNumber, tableNumber: order.tableNumber, ticketNumber: order.ticketNumber, items: extra, createdByDeviceId: deviceId);
+    if (isMain) { _deduct(delta); unawaited(_printKitchen(delta)); _server?.broadcast('order.upsert', order.toJson()); _schedulePersist(); }
+    notifyListeners();
+  }
+
   void updateOrderStatus(String id, OrderStatus status) {
     orders = orders.map((o) => o.id == id ? o.copyWith(status: status) : o).toList();
     final order = orders.firstWhere((o) => o.id == id);
-    if (isMain) _server?.broadcast('order.upsert', order.toJson()); else _send('order.update', order.toJson());
+    if (isMain) { _server?.broadcast('order.upsert', order.toJson()); _schedulePersist(); } else { _send('order.update', order.toJson()); }
     notifyListeners();
   }
 
   void markPaid(String id) {
     orders = orders.map((o) => o.id == id ? o.copyWith(isPaid: true, status: OrderStatus.paid, paidAt: DateTime.now().toUtc()) : o).toList();
     final order = orders.firstWhere((o) => o.id == id);
-    if (isMain) _server?.broadcast('order.upsert', order.toJson()); else _send('order.update', order.toJson());
+    if (isMain) { _server?.broadcast('order.upsert', order.toJson()); unawaited(_printReceipt(order)); _schedulePersist(); } else { _send('order.update', order.toJson()); }
     notifyListeners();
   }
 
@@ -210,34 +295,27 @@ class AppController extends ChangeNotifier {
     if (!isMain) return;
     final idx = menuItems.indexWhere((m) => m.id == item.id);
     if (idx >= 0) menuItems = [...menuItems]..[idx] = item;
-    else {
-      menuItems = [...menuItems, item];
-      inventory = [...inventory, InventoryItem(name: item.name, quantity: 50, linkedMenuItemId: item.id)];
-    }
-    _server?.broadcast('state.replace', fullState());
-    notifyListeners();
+    else { menuItems = [...menuItems, item]; inventory = [...inventory, InventoryItem(name: item.name, quantity: 50, linkedMenuItemId: item.id)]; }
+    _server?.broadcast('state.replace', fullState()); _schedulePersist(); notifyListeners();
   }
 
   void deleteMenuItem(String id) {
     if (!isMain) return;
     menuItems = menuItems.where((m) => m.id != id).toList();
-    _server?.broadcast('state.replace', fullState());
-    notifyListeners();
+    _server?.broadcast('state.replace', fullState()); _schedulePersist(); notifyListeners();
   }
 
   void upsertCategory(MenuCategory cat) {
     if (!isMain) return;
     final idx = categories.indexWhere((c) => c.id == cat.id);
     if (idx >= 0) categories = [...categories]..[idx] = cat; else categories = [...categories, cat];
-    _server?.broadcast('state.replace', fullState());
-    notifyListeners();
+    _server?.broadcast('state.replace', fullState()); _schedulePersist(); notifyListeners();
   }
 
   void setInventoryQty(String id, double qty) {
     if (!isMain) return;
     inventory = inventory.map((i) => i.id != id ? i : InventoryItem(id: i.id, name: i.name, unit: i.unit, quantity: qty, lowStockThreshold: i.lowStockThreshold, linkedMenuItemId: i.linkedMenuItemId)).toList();
-    _server?.broadcast('state.replace', fullState());
-    notifyListeners();
+    _server?.broadcast('state.replace', fullState()); _schedulePersist(); notifyListeners();
   }
 
   Future<bool> activateLicense(String key) async {
@@ -250,29 +328,26 @@ class AppController extends ChangeNotifier {
       if (res.statusCode != 200 || data['valid'] != true) {
         licenseMessage = data['error']?.toString() ?? 'Invalid license';
         license = LicenseInfo(key: key.trim(), customerId: '', customerName: 'Pending', expiresAt: DateTime.now().add(const Duration(days: 7)), isActive: true);
-        notifyListeners();
-        return false;
+        notifyListeners(); return false;
       }
       license = LicenseInfo(key: key.trim(), customerId: '${data['customerId'] ?? ''}', customerName: '${data['customerName'] ?? ''}', expiresAt: DateTime.tryParse('${data['expiresAt']}') ?? DateTime.now().add(const Duration(days: 30)), isActive: true, lastValidatedAt: DateTime.now().toUtc());
       await p.setString('license_customer_id', license!.customerId);
       await p.setString('license_customer_name', license!.customerName);
       await p.setString('license_expires', license!.expiresAt.toIso8601String());
       licenseMessage = 'License active until ${license!.expiresAt.toLocal().toString().split(' ').first}';
-      notifyListeners();
-      return true;
+      notifyListeners(); return true;
     } catch (e) {
       final p = await SharedPreferences.getInstance();
       await p.setString('license_key', key.trim());
       license = LicenseInfo(key: key.trim(), customerId: '', customerName: 'Offline grace', expiresAt: DateTime.now().add(const Duration(days: 14)), isActive: true);
       licenseMessage = 'Saved offline with grace period.';
-      notifyListeners();
-      return true;
+      notifyListeners(); return true;
     }
   }
 
   @override
   void dispose() {
-    _wsSub?.cancel(); _ws?.sink.close(); _server?.stop();
+    _persistDebounce?.cancel(); _wsSub?.cancel(); _ws?.sink.close(); _server?.stop();
     super.dispose();
   }
 }
