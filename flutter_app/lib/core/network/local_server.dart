@@ -11,6 +11,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
+import '../models/models_extra.dart';
 import 'local_web_ui.dart';
 
 final _log = Logger();
@@ -24,8 +25,8 @@ class LocalServer {
   final int port;
   final StateProvider getFullState;
   final EventHandler onClientEvent;
-  final Map<String, WebSocketChannel> _clients = {};
   final Map<String, DeviceInfo> _connectedDevices = {};
+  final Map<String, WebSocketChannel> _clients = {};
 
   LocalServer({
     this.port = 8787,
@@ -141,7 +142,11 @@ class LocalServer {
 
 extension on DeviceInfo {
   DeviceInfo copyWithOnline(bool online) => DeviceInfo(
-        id: id, name: name, role: role, ip: ip,
-        lastSeen: DateTime.now().toUtc(), isOnline: online,
+        id: id,
+        name: name,
+        role: role,
+        ip: ip,
+        lastSeen: DateTime.now().toUtc(),
+        isOnline: online,
       );
 }
