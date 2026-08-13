@@ -29,6 +29,8 @@ class AppController extends ChangeNotifier {
   List<InventoryItem> inventory = [];
   List<DeviceInfo> devices = [];
   LicenseInfo? license;
+  String localeCode = 'en';
+  bool get hasLicense => license != null;
   LocalServer? _server;
   WebSocketChannel? _ws;
   StreamSubscription? _wsSub;
@@ -55,6 +57,7 @@ class AppController extends ChangeNotifier {
     deviceName = p.getString('device_name') ?? 'Tablet-${deviceId.substring(0, 4)}';
     kitchenPrinterIp = p.getString('kitchen_printer_ip');
     cashierPrinterIp = p.getString('cashier_printer_ip');
+    localeCode = p.getString('locale_code') ?? 'en';
     final billJson = p.getString('bill_profile_json');
     if (billJson != null) {
       try { bill = BillProfile.fromJson(jsonDecode(billJson) as Map<String, dynamic>); } catch (_) {}
@@ -70,6 +73,13 @@ class AppController extends ChangeNotifier {
     if (saved != null && saved.isNotEmpty) {
       try { applyState(jsonDecode(saved) as Map<String, dynamic>); } catch (_) { _seed(); }
     } else { _seed(); }
+    notifyListeners();
+  }
+
+  Future<void> setLocale(String code) async {
+    localeCode = (code == 'ur') ? 'ur' : 'en';
+    final p = await SharedPreferences.getInstance();
+    await p.setString('locale_code', localeCode);
     notifyListeners();
   }
 
