@@ -8,14 +8,50 @@ import '../models/models.dart';
 
 final _log = Logger();
 
-/// ESC/POS printing via network (IP:9100).
-/// Bluetooth can be re-added later with a maintained package.
+class BillProfile {
+  final String restaurantName;
+  final String address;
+  final String phone;
+  final String taxId;
+  final String footer;
+  final String currencySymbol;
+
+  const BillProfile({
+    this.restaurantName = 'My Restaurant',
+    this.address = '',
+    this.phone = '',
+    this.taxId = '',
+    this.footer = 'Thank you!',
+    this.currencySymbol = '\$',
+  });
+
+  Map<String, dynamic> toJson() => {
+        'restaurantName': restaurantName,
+        'address': address,
+        'phone': phone,
+        'taxId': taxId,
+        'footer': footer,
+        'currencySymbol': currencySymbol,
+      };
+
+  factory BillProfile.fromJson(Map<String, dynamic>? j) {
+    if (j == null) return const BillProfile();
+    return BillProfile(
+      restaurantName: j['restaurantName'] as String? ?? 'My Restaurant',
+      address: j['address'] as String? ?? '',
+      phone: j['phone'] as String? ?? '',
+      taxId: j['taxId'] as String? ?? '',
+      footer: j['footer'] as String? ?? 'Thank you!',
+      currencySymbol: j['currencySymbol'] as String? ?? '\$',
+    );
+  }
+}
+
 class PrintService {
   static Uint8List buildKitchenTicket({
     required Order order,
-    required String restaurantName,
+    required BillProfile bill,
     bool onlyNewItems = false,
-    int paperWidth = 32,
   }) {
     final buffer = BytesBuilder();
     void write(String s) => buffer.add(utf8.encode(s));
@@ -23,7 +59,7 @@ class PrintService {
 
     cmd([0x1B, 0x40]);
     cmd([0x1B, 0x61, 0x01]);
-    write('$restaurantName\n');
+    write('${bill.restaurantName}\n');
     write('KITCHEN TICKET\n');
     cmd([0x1B, 0x61, 0x00]);
     write('--------------------------------\n');
@@ -51,40 +87,70 @@ class PrintService {
     if (order.notes != null && order.notes!.isNotEmpty) {
       write('Order note: ${order.notes}\n');
     }
-    write('--------------------------------\n');
-    write('\n\n\n');
+    write('--------------------------------\n\n\n\n');
     cmd([0x1D, 0x56, 0x00]);
     return buffer.toBytes();
   }
 
   static Uint8List buildPaymentTicket({
     required Order order,
-    required String restaurantName,
-    int paperWidth = 32,
+    required BillProfile bill,
   }) {
     final buffer = BytesBuilder();
     void write(String s) => buffer.add(utf8.encode(s));
     void cmd(List<int> bytes) => buffer.add(bytes);
+    final sym = bill.currencySymbol;
 
     cmd([0x1B, 0x40]);
     cmd([0x1B, 0x61, 0x01]);
-    write('$restaurantName\n');
+    write('${bill.restaurantName}\n');
+    if (bill.address.isNotEmpty) write('${bill.address}\n');
+    if (bill.phone.isNotEmpty) write('Tel: ${bill.phone}\n');
+    if (bill.taxId.isNotEmpty) write('Tax ID: ${bill.taxId}\n');
     write('RECEIPT\n');
     cmd([0x1B, 0x61, 0x00]);
     write('--------------------------------\n');
     write('Order #: ${order.orderNumber}\n');
     if (order.tableNumber != null) write('Table: ${order.tableNumber}\n');
     if (order.ticketNumber != null) write('Ticket: ${order.ticketNumber}\n');
+    write('Time: ${order.paidAt?.toLocal() ?? order.createdAt.toLocal()}\n');
     write('--------------------------------\n');
 
     for (final item in order.items) {
-      write('${item.quantity}x ${item.nameSnapshot}  ${item.lineTotal.asDouble.toStringAsFixed(2)}\n');
+      write('${item.quantity}x ${item.nameSnapshot}\n');
+      write('  $sym${item.lineTotal.asDouble.toStringAsFixed(2)}\n');
     }
     write('--------------------------------\n');
-    write('TOTAL: ${order.total.asDouble.toStringAsFixed(2)}\n');
-    write('Thank you!\n\n\n\n');
+    write('TOTAL: $sym${order.total.asDouble.toStringAsFixed(2)}\n');
+    write('--------------------------------\n');
+    cmd([0x1B, 0x61, 0x01]);
+    write('${bill.footer}\n\n\n\n');
     cmd([0x1D, 0x56, 0x00]);
     return buffer.toBytes();
+  }
+
+  static String buildBillPreview({
+    required Order order,
+    required BillProfile bill,
+  }) {
+    final sym = bill.currencySymbol;
+    final b = StringBuffer();
+    b.writeln(bill.restaurantName);
+    if (bill.address.isNotEmpty) b.writeln(bill.address);
+    if (bill.phone.isNotEmpty) b.writeln('Tel: ${bill.phone}');
+    if (bill.taxId.isNotEmpty) b.writeln('Tax ID: ${bill.taxId}');
+    b.writeln('--- RECEIPT ---');
+    b.writeln('Order #${order.orderNumber}');
+    if (order.tableNumber != null) b.writeln('Table: ${order.tableNumber}');
+    if (order.ticketNumber != null) b.writeln('Ticket: ${order.ticketNumber}');
+    b.writeln('---');
+    for (final item in order.items) {
+      b.writeln('${item.quantity}x ${item.nameSnapshot}  $sym${item.lineTotal.asDouble.toStringAsFixed(2)}');
+    }
+    b.writeln('---');
+    b.writeln('TOTAL: $sym${order.total.asDouble.toStringAsFixed(2)}');
+    b.writeln(bill.footer);
+    return b.toString();
   }
 
   static Future<bool> sendToNetworkPrinter({
@@ -107,20 +173,38 @@ class PrintService {
 
   static Future<bool> printKitchenTicket({
     required Order order,
-    required String restaurantName,
+    required BillProfile bill,
     String? networkIp,
-    bool useBluetooth = false,
     bool onlyNewItems = false,
   }) async {
-    final bytes = buildKitchenTicket(
-      order: order,
-      restaurantName: restaurantName,
-      onlyNewItems: onlyNewItems,
-    );
+    final bytes = buildKitchenTicket(order: order, bill: bill, onlyNewItems: onlyNewItems);
     if (networkIp != null && networkIp.isNotEmpty) {
       return sendToNetworkPrinter(ip: networkIp, data: bytes);
     }
-    _log.w('No network printer configured');
     return false;
+  }
+
+  static Future<bool> printPaymentTicket({
+    required Order order,
+    required BillProfile bill,
+    String? networkIp,
+  }) async {
+    final bytes = buildPaymentTicket(order: order, bill: bill);
+    if (networkIp != null && networkIp.isNotEmpty) {
+      return sendToNetworkPrinter(ip: networkIp, data: bytes);
+    }
+    return false;
+  }
+
+  static Future<bool> testPrint({
+    required BillProfile bill,
+    required String ip,
+  }) async {
+    final buffer = BytesBuilder();
+    void write(String s) => buffer.add(utf8.encode(s));
+    buffer.add([0x1B, 0x40]);
+    write('TEST PRINT\n${bill.restaurantName}\nOK\n\n\n');
+    buffer.add([0x1D, 0x56, 0x00]);
+    return sendToNetworkPrinter(ip: ip, data: buffer.toBytes());
   }
 }
