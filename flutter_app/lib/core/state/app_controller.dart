@@ -448,6 +448,59 @@ class AppController extends ChangeNotifier {
     return {'days': days, 'orders': paid.length, 'total': total, 'currency': bill.currencySymbol, 'lowStock': lowStockItems.length};
   }
 
+  Future<bool> registerSignup({required String name, required String phone, String email = ''}) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$licenseApiBase/api/v1/signup'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'name': name.trim(), 'phone': phone.trim(), 'email': email.trim(), 'deviceId': deviceId}),
+      ).timeout(const Duration(seconds: 12));
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('signup_name', name.trim());
+        await prefs.setString('signup_phone', phone.trim());
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String exportBackupJson() {
+    return jsonEncode({
+      'version': 1,
+      'exportedAt': DateTime.now().toUtc().toIso8601String(),
+      'bill': bill.toJson(),
+      'categories': categories.map((c) => c.toJson()).toList(),
+      'menuItems': menuItems.map((m) => m.toJson()).toList(),
+      'inventory': inventory.map((i) => i.toJson()).toList(),
+    });
+  }
+
+  int importBackupJson(String raw) {
+    if (!isMain) return 0;
+    try {
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      if (data['bill'] is Map) bill = BillProfile.fromJson(Map<String, dynamic>.from(data['bill'] as Map));
+      if (data['categories'] is List) {
+        categories = (data['categories'] as List).map((e) => MenuCategory.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      }
+      if (data['menuItems'] is List) {
+        menuItems = (data['menuItems'] as List).map((e) => MenuItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      }
+      if (data['inventory'] is List) {
+        inventory = (data['inventory'] as List).map((e) => InventoryItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+      }
+      _server?.broadcast('state.replace', fullState());
+      _schedulePersist();
+      notifyListeners();
+      return menuItems.length + inventory.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   Future<bool> activateLicense(String key) async {
     licenseMessage = null; notifyListeners();
     try {
