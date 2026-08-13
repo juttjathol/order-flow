@@ -222,7 +222,7 @@ class AppController extends ChangeNotifier {
     for (final line in order.items) {
       inventory = inventory.map((inv) {
         if (inv.linkedMenuItemId == line.menuItemId) {
-          return InventoryItem(id: inv.id, name: inv.name, unit: inv.unit, quantity: (inv.quantity - line.quantity).clamp(0, 1e9), lowStockThreshold: inv.lowStockThreshold, linkedMenuItemId: inv.linkedMenuItemId);
+          return InventoryItem(id: inv.id, name: inv.name, unit: inv.unit, quantity: (inv.quantity - line.quantity).clamp(0, 1e9).toDouble(), lowStockThreshold: inv.lowStockThreshold, linkedMenuItemId: inv.linkedMenuItemId);
         }
         return inv;
       }).toList();
@@ -385,9 +385,9 @@ class AppController extends ChangeNotifier {
       if (parts.isEmpty) continue;
       final name = parts[0].trim();
       if (name.isEmpty) continue;
-      final qty = parts.length > 1 ? double.tryParse(parts[1].trim().replaceAll(',', '')) ?? 0 : 0;
+      final qty = (parts.length > 1 ? double.tryParse(parts[1].trim().replaceAll(',', '')) : null) ?? 0.0;
       final unit = parts.length > 2 && parts[2].trim().isNotEmpty ? parts[2].trim() : 'pcs';
-      final low = parts.length > 3 ? double.tryParse(parts[3].trim().replaceAll(',', '')) ?? 5 : 5;
+      final low = (parts.length > 3 ? double.tryParse(parts[3].trim().replaceAll(',', '')) : null) ?? 5.0;
       imported.add(InventoryItem(name: name, quantity: qty, unit: unit, lowStockThreshold: low));
     }
     if (imported.isEmpty) return 0;
