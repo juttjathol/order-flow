@@ -30,13 +30,13 @@ class _OrderTakerHomeState extends ConsumerState<OrderTakerHome> {
         final old = cart[i];
         cart[i] = OrderItem(
           menuItemId: old.menuItemId,
-          name: old.name,
+          nameSnapshot: old.nameSnapshot,
           unitPrice: old.unitPrice,
           quantity: old.quantity + 1,
-          note: old.note,
+          notes: old.notes,
         );
       } else {
-        cart.add(OrderItem(menuItemId: m.id, name: m.name, unitPrice: m.price, quantity: 1));
+        cart.add(OrderItem(menuItemId: m.id, nameSnapshot: m.name, unitPrice: m.price, quantity: 1));
       }
     });
   }
