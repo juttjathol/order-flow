@@ -92,6 +92,20 @@ class _CashierHomeState extends ConsumerState<CashierHome> {
                             },
                             child: const Text('Mark paid'),
                           ),
+                          TextButton(
+                            onPressed: () {
+                              final preview = app.billPreviewFor(o);
+                              showDialog(
+                                context: context,
+                                builder: (d) => AlertDialog(
+                                  title: const Text('Bill preview'),
+                                  content: SingleChildScrollView(child: SelectableText(preview, style: const TextStyle(fontFamily: 'monospace', fontSize: 13))),
+                                  actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('Close'))],
+                                ),
+                              );
+                            },
+                            child: const Text('Preview bill'),
+                          ),
                         ]),
                       ),
                     );
