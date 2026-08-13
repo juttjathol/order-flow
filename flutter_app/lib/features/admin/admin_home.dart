@@ -42,7 +42,7 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
           const Text('Menu', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           Expanded(child: ListView(children: app.menuItems.map((m) => ListTile(
             title: Text(m.name),
-            subtitle: Text('\$${m.price.asDouble.toStringAsFixed(2)}'),
+            subtitle: Text('${app.bill.currencySymbol}${m.price.asDouble.toStringAsFixed(2)}'),
             trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () { app.deleteMenuItem(m.id); Navigator.pop(ctx); }),
           )).toList())),
           FilledButton.icon(onPressed: () {
@@ -161,6 +161,11 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
         TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')),
         TextField(controller: footer, decoration: const InputDecoration(labelText: 'Receipt footer')),
         TextField(controller: cur, decoration: const InputDecoration(labelText: 'Currency symbol')),
+        const SizedBox(height: 6),
+        Wrap(spacing: 6, children: ['\$', '€', '£', 'Rs', 'RM', 'AED', '₹'].map((sym) => ActionChip(
+          label: Text(sym),
+          onPressed: () => cur.text = sym,
+        )).toList()),
         const Divider(),
         TextField(controller: kitchen, decoration: const InputDecoration(labelText: 'Kitchen printer IP')),
         TextField(controller: cashier, decoration: const InputDecoration(labelText: 'Cashier printer IP')),
@@ -253,6 +258,40 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
         Card(child: ListTile(leading: const Icon(Icons.inventory_2, color: AppColors.primary), title: const Text('Inventory'), subtitle: const Text('Add item · Import Excel/CSV'), onTap: _inventory)),
         Card(child: ListTile(leading: const Icon(Icons.receipt, color: AppColors.primary), title: const Text('Bill & printers'), subtitle: Text(app.bill.restaurantName), onTap: _settings)),
         Card(child: ListTile(leading: const Icon(Icons.bar_chart, color: AppColors.primary), title: const Text('Today report'), onTap: _reports)),
+        Card(child: ListTile(
+          leading: const Icon(Icons.upload_file, color: AppColors.primary),
+          title: const Text('Export backup'),
+          subtitle: const Text('Menu + inventory + bill as text'),
+          onTap: () {
+            final json = app.exportBackupJson();
+            showDialog(context: context, builder: (d) => AlertDialog(
+              title: const Text('Backup JSON'),
+              content: SingleChildScrollView(child: SelectableText(json, style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))),
+              actions: [
+                TextButton(onPressed: () { Clipboard.setData(ClipboardData(text: json)); Navigator.pop(d); }, child: const Text('Copy')),
+                FilledButton(onPressed: () => Navigator.pop(d), child: const Text('Close')),
+              ],
+            ));
+          },
+        )),
+        Card(child: ListTile(
+          leading: const Icon(Icons.download, color: AppColors.primary),
+          title: const Text('Restore backup'),
+          onTap: () {
+            final c = TextEditingController();
+            showDialog(context: context, builder: (d) => AlertDialog(
+              title: const Text('Paste backup JSON'),
+              content: TextField(controller: c, maxLines: 8),
+              actions: [
+                FilledButton(onPressed: () {
+                  final n = ref.read(appControllerProvider).importBackupJson(c.text);
+                  Navigator.pop(d);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Restored $n items')));
+                }, child: const Text('Restore')),
+              ],
+            ));
+          },
+        )),
         Card(child: ListTile(leading: const Icon(Icons.receipt_long, color: AppColors.primary), title: Text('Orders (${app.orders.length})'), onTap: () {
           showModalBottomSheet(context: context, builder: (_) => ListView(children: app.orders.reversed.map((o) => ListTile(
             title: Text('#${o.orderNumber} · ${o.tableNumber ?? '—'}'),
