@@ -163,7 +163,7 @@ class _KitchenHomeState extends ConsumerState<KitchenHome> {
                                           ),
                                           const SizedBox(width: 12),
                                           Expanded(
-                                            child: Text(it.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                                            child: Text(it.nameSnapshot, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
                                           ),
                                         ],
                                       ),
