@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../core/models/models.dart';
 import '../../core/state/app_controller.dart';
 import '../../shared/theme/app_theme.dart';
@@ -13,194 +14,336 @@ class OrderTakerHome extends ConsumerStatefulWidget {
 }
 
 class _OrderTakerHomeState extends ConsumerState<OrderTakerHome> {
-  final _tableCtrl = TextEditingController();
-  final _ipCtrl = TextEditingController();
-  String selectedCat = 'All';
-  final cart = <OrderItem>[];
-  bool _connecting = false;
+  final table = TextEditingController();
+  final ticket = TextEditingController();
+  final host = TextEditingController();
+  final List<OrderItem> cart = [];
+  String? selectedCat;
   String? _addToOrderId;
 
-  double get cartTotal => cart.fold(0.0, (s, l) => s + l.lineTotal.asDouble);
-
-  Future<void> _connect() async {
-    final host = _ipCtrl.text.trim();
-    if (host.isEmpty) return;
-    setState(() => _connecting = true);
-    final ok = await ref.read(appControllerProvider).connectToMain(host, asRole: DeviceRole.orderTaker);
-    setState(() => _connecting = false);
-    if (!mounted) return;
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(ok ? 'Connected' : 'Could not connect — check IP and Main server'),
-      backgroundColor: ok ? AppColors.success : AppColors.danger,
-      behavior: SnackBarBehavior.floating,
-    ));
-  }
-
-  void _showJoin() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        final isDark = Theme.of(ctx).brightness == Brightness.dark;
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              const Text('Connect to Main', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 12),
-              TextField(controller: _ipCtrl, decoration: const InputDecoration(labelText: 'Main IP', prefixIcon: Icon(Icons.lan))),
-              const SizedBox(height: 12),
-              FilledButton(onPressed: _connecting ? null : _connect, child: Text(_connecting ? 'Connecting…' : 'Connect')),
-            ]),
-          ),
-        );
-      },
-    );
-  }
-
-  void _onTableChanged(String v) {
-    final app = ref.read(appControllerProvider);
-    setState(() => _addToOrderId = app.findOpenByTable(v)?.id);
-  }
+  double get cartTotal => cart.fold(0, (s, i) => s + i.lineTotal.asDouble);
 
   void _add(MenuItem m) {
     setState(() {
-      final i = cart.indexWhere((c) => c.menuItemId == m.id);
-      if (i >= 0) cart[i] = cart[i].copyWith(quantity: cart[i].quantity + 1);
-      else cart.add(OrderItem(menuItemId: m.id, nameSnapshot: m.name, unitPrice: m.price));
+      final i = cart.indexWhere((e) => e.menuItemId == m.id);
+      if (i >= 0) {
+        final old = cart[i];
+        cart[i] = OrderItem(
+          menuItemId: old.menuItemId,
+          name: old.name,
+          unitPrice: old.unitPrice,
+          quantity: old.quantity + 1,
+          note: old.note,
+        );
+      } else {
+        cart.add(OrderItem(menuItemId: m.id, name: m.name, unitPrice: m.price, quantity: 1));
+      }
     });
   }
 
-  void _send() {
-    if (cart.isEmpty) return;
+  Future<void> _send() async {
     final app = ref.read(appControllerProvider);
-    if (!app.isMain && !app.clientConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Connect to Main first')));
-      return;
-    }
-    final table = _tableCtrl.text.trim();
+    if (cart.isEmpty) return;
     if (_addToOrderId != null) {
       app.addItemsToOrder(_addToOrderId!, List.from(cart));
-      setState(() { cart.clear(); _addToOrderId = app.findOpenByTable(table)?.id; });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Items added to table $table'), backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating));
-      return;
+    } else {
+      app.createOrder(
+        tableNumber: table.text.trim().isEmpty ? null : table.text.trim(),
+        ticketNumber: ticket.text.trim().isEmpty ? null : ticket.text.trim(),
+        items: List.from(cart),
+      );
     }
-    app.createOrder(
-      tableNumber: table.isEmpty ? null : table,
-      ticketNumber: table.isEmpty ? 'T-${DateTime.now().millisecondsSinceEpoch % 10000}' : null,
-      items: List.from(cart),
+    setState(() {
+      cart.clear();
+      _addToOrderId = null;
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          content: const Text('Order sent to kitchen'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _connect() async {
+    final app = ref.read(appControllerProvider);
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Connect to Main'),
+        content: TextField(
+          controller: host,
+          decoration: const InputDecoration(
+            labelText: 'Main device IP',
+            hintText: '192.168.1.10',
+            prefixIcon: Icon(Icons.wifi),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () async {
+              final ok = await app.connectToMain(host.text.trim());
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(ok ? 'Connected' : 'Failed to connect')),
+                );
+              }
+            },
+            child: const Text('Connect'),
+          ),
+        ],
+      ),
     );
-    setState(() { cart.clear(); _addToOrderId = table.isEmpty ? null : app.findOpenByTable(table)?.id; });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(table.isEmpty ? 'Order sent' : 'Order sent · Table $table'), backgroundColor: AppColors.success, behavior: SnackBarBehavior.floating));
   }
 
   @override
   Widget build(BuildContext context) {
     final app = ref.watch(appControllerProvider);
-    final ready = app.isMain || app.clientConnected;
-    final cats = ['All', ...app.categories.map((c) => c.name)];
-    final items = selectedCat == 'All'
-        ? app.menuItems.where((m) => m.isAvailable).toList()
-        : app.menuItems.where((m) {
-            final cat = app.categories.where((c) => c.id == m.categoryId);
-            return m.isAvailable && cat.isNotEmpty && cat.first.name == selectedCat;
-          }).toList();
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cats = ['All', ...app.categories.map((c) => c.name)];
+    selectedCat ??= 'All';
+    final items = selectedCat == 'All'
+        ? app.menuItems
+        : app.menuItems.where((m) {
+            final c = app.categories.where((x) => x.id == m.categoryId);
+            return c.isNotEmpty && c.first.name == selectedCat;
+          }).toList();
+    final sym = app.bill.currencySymbol;
 
     return Scaffold(
       appBar: AppBar(
-        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Order Taker'),
-          Text(ready ? (app.isMain ? 'Main mode' : 'Online · ${app.connectedHost}') : 'Not connected', style: TextStyle(fontSize: 12, color: ready ? AppColors.success : Colors.grey)),
-        ]),
+        title: const Text('Order taker'),
         actions: [
-          IconButton(icon: const Icon(Icons.link), onPressed: _showJoin),
-          IconButton(icon: const Icon(Icons.home), onPressed: () => context.go('/')),
+          if (!app.isMain && !app.clientConnected)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: FilledButton.tonalIcon(
+                onPressed: _connect,
+                icon: const Icon(Icons.link_rounded, size: 18),
+                label: const Text('Connect'),
+              ),
+            ),
+          IconButton(icon: const Icon(Icons.home_rounded), onPressed: () => context.go('/')),
         ],
       ),
-      body: !ready
-          ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.point_of_sale, size: 64, color: AppColors.primary),
-              const SizedBox(height: 16),
-              const Text('Connect to Main device', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 24),
-              FilledButton.icon(onPressed: _showJoin, icon: const Icon(Icons.link), label: const Text('Connect')),
-            ]))
-          : Column(children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: TextField(
-                  controller: _tableCtrl,
-                  onChanged: _onTableChanged,
-                  decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.table_restaurant),
-                    hintText: 'Table # or Ticket #',
-                    suffixIcon: _addToOrderId != null ? const Padding(padding: EdgeInsets.only(right: 8), child: Chip(label: Text('ADD MORE'), visualDensity: VisualDensity.compact)) : null,
-                  ),
+      body: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
-              ),
-              if (_addToOrderId != null)
-                Material(
-                  color: AppColors.warning.withValues(alpha: 0.15),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text('Open order for this table — new items will be added.', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                  ),
-                ),
-              SizedBox(
-                height: 48,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  children: cats.map((c) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(label: Text(c), selected: selectedCat == c, onSelected: (_) => setState(() => selectedCat = c)),
-                  )).toList(),
-                ),
-              ),
-              Expanded(
-                child: GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.2),
-                  itemCount: items.length,
-                  itemBuilder: (_, i) {
-                    final m = items[i];
-                    return ScaleTap(
-                      onTap: () => _add(m),
-                      child: Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
-                        ),
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                          Text(m.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                          Text('\$${m.price.asDouble.toStringAsFixed(2)}', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 16)),
-                        ]),
+              ],
+            ),
+            child: Column(
+              children: [
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: table,
+                      decoration: const InputDecoration(
+                        labelText: 'Table',
+                        prefixIcon: Icon(Icons.table_restaurant_rounded),
+                        isDense: true,
                       ),
-                    );
-                  },
-                ),
-              ),
-            ]),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: ticket,
+                      decoration: const InputDecoration(
+                        labelText: 'Ticket #',
+                        prefixIcon: Icon(Icons.confirmation_number_outlined),
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                ]),
+                if (app.openOrders.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Add more to open table',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  SizedBox(
+                    height: 36,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: app.openOrders.map((o) {
+                        final selected = _addToOrderId == o.id;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: FilterChip(
+                            selected: selected,
+                            label: Text('T${o.tableNumber ?? '—'} · #${o.orderNumber}'),
+                            onSelected: (_) => setState(() => _addToOrderId = selected ? null : o.id),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 48,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: cats.asMap().entries.map((e) {
+                final c = e.value;
+                final selected = selectedCat == c;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FadeSlideIn(
+                    index: e.key,
+                    child: FilterChip(
+                      label: Text(c, style: TextStyle(fontWeight: selected ? FontWeight.w800 : FontWeight.w500)),
+                      selected: selected,
+                      onSelected: (_) => setState(() => selectedCat = c),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: items.isEmpty
+                ? const Center(child: Text('No menu items'))
+                : GridView.builder(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 1.15,
+                    ),
+                    itemCount: items.length,
+                    itemBuilder: (_, i) {
+                      final m = items[i];
+                      return FadeSlideIn(
+                        index: i % 8,
+                        child: ScaleTap(
+                          onTap: () => _add(m),
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: isDark
+                                    ? const [Color(0xFF1E293B), Color(0xFF0F172A)]
+                                    : [Colors.white, const Color(0xFFF8FAFC)],
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: isDark ? const Color(0xFF334155) : Colors.grey.shade200,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withOpacity(0.06),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(m.name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, height: 1.25)),
+                                Row(
+                                  children: [
+                                    Text(
+                                      '$sym${m.price.asDouble.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 17,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Icon(Icons.add_rounded, size: 18, color: AppColors.primary),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
       bottomSheet: cart.isEmpty
           ? null
           : Container(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, -4)),
+                ],
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
               child: SafeArea(
-                child: Row(children: [
-                  Expanded(child: Text('\$${cartTotal.toStringAsFixed(2)} · ${cart.fold<int>(0, (s, l) => s + l.quantity)} items', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
-                  FilledButton.icon(onPressed: _send, icon: const Icon(Icons.send), label: Text(_addToOrderId != null ? 'Add to order' : 'Send')),
-                ]),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$sym${cartTotal.toStringAsFixed(2)}',
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22),
+                          ),
+                          Text(
+                            '${cart.fold<int>(0, (s, l) => s + l.quantity)} items'
+                            '${_addToOrderId != null ? ' · add to table' : ''}',
+                            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _send,
+                      icon: const Icon(Icons.send_rounded),
+                      label: Text(_addToOrderId != null ? 'Add' : 'Send'),
+                    ),
+                  ],
+                ),
               ),
             ),
     );
