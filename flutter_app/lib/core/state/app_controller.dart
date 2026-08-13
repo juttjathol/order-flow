@@ -21,7 +21,7 @@ class AppController extends ChangeNotifier {
   int port = 8787, _orderSeq = 1;
   String deviceId = _uuid.v4(), deviceName = 'Device';
   DeviceRole role = DeviceRole.orderTaker;
-  String restaurantName = 'My Restaurant';
+  BillProfile bill = const BillProfile();
   String? kitchenPrinterIp, cashierPrinterIp;
   List<MenuCategory> categories = [];
   List<MenuItem> menuItems = [];
@@ -35,6 +35,7 @@ class AppController extends ChangeNotifier {
   Timer? _persistDebounce;
 
   String get joinUrl => 'http://${localIp ?? '0.0.0.0'}:$port';
+  String get restaurantName => bill.restaurantName;
   List<Order> get openOrders => orders.where((o) => !o.isPaid && o.status != OrderStatus.cancelled).toList();
   List<Order> get kitchenOrders => openOrders.where((o) => o.status == OrderStatus.open || o.status == OrderStatus.preparing || o.status == OrderStatus.ready).toList();
   double get todaySales {
@@ -45,15 +46,22 @@ class AppController extends ChangeNotifier {
     final t = DateTime.now().toUtc();
     return orders.where((o) { final c = o.createdAt; return c.year == t.year && c.month == t.month && c.day == t.day; }).length;
   }
+  List<InventoryItem> get lowStockItems => inventory.where((i) => i.quantity <= i.lowStockThreshold).toList();
 
   Future<void> init() async {
     final p = await SharedPreferences.getInstance();
     deviceId = p.getString('device_id') ?? deviceId;
     await p.setString('device_id', deviceId);
     deviceName = p.getString('device_name') ?? 'Tablet-${deviceId.substring(0, 4)}';
-    restaurantName = p.getString('restaurant_name') ?? restaurantName;
     kitchenPrinterIp = p.getString('kitchen_printer_ip');
     cashierPrinterIp = p.getString('cashier_printer_ip');
+    final billJson = p.getString('bill_profile_json');
+    if (billJson != null) {
+      try { bill = BillProfile.fromJson(jsonDecode(billJson) as Map<String, dynamic>); } catch (_) {}
+    } else {
+      final name = p.getString('restaurant_name');
+      if (name != null) bill = BillProfile(restaurantName: name);
+    }
     final k = p.getString('license_key');
     if (k != null) {
       license = LicenseInfo(key: k, customerId: p.getString('license_customer_id') ?? '', customerName: p.getString('license_customer_name') ?? '', expiresAt: DateTime.tryParse(p.getString('license_expires') ?? '') ?? DateTime.now().add(const Duration(days: 30)), isActive: true);
@@ -88,7 +96,8 @@ class AppController extends ChangeNotifier {
   Future<void> _persist() async {
     try {
       final p = await SharedPreferences.getInstance();
-      await p.setString('restaurant_name', restaurantName);
+      await p.setString('bill_profile_json', jsonEncode(bill.toJson()));
+      await p.setString('restaurant_name', bill.restaurantName);
       if (kitchenPrinterIp != null) await p.setString('kitchen_printer_ip', kitchenPrinterIp!); else await p.remove('kitchen_printer_ip');
       if (cashierPrinterIp != null) await p.setString('cashier_printer_ip', cashierPrinterIp!); else await p.remove('cashier_printer_ip');
       if (isMain || serverRunning) await p.setString('main_state_json', jsonEncode(fullState()));
@@ -116,7 +125,8 @@ class AppController extends ChangeNotifier {
     'inventory': inventory.map((i) => i.toJson()).toList(),
     'orderSeq': _orderSeq,
     'devices': devices.map((d) => d.toJson()).toList(),
-    'restaurantName': restaurantName,
+    'bill': bill.toJson(),
+    'restaurantName': bill.restaurantName,
     'kitchenPrinterIp': kitchenPrinterIp,
     'cashierPrinterIp': cashierPrinterIp,
   };
@@ -127,21 +137,34 @@ class AppController extends ChangeNotifier {
     orders = (s['orders'] as List? ?? []).map((e) => Order.fromJson(Map<String, dynamic>.from(e as Map))).toList();
     inventory = (s['inventory'] as List? ?? []).map((e) => InventoryItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
     _orderSeq = s['orderSeq'] as int? ?? _orderSeq;
-    if (s['restaurantName'] is String) restaurantName = s['restaurantName'] as String;
+    if (s['bill'] is Map) bill = BillProfile.fromJson(Map<String, dynamic>.from(s['bill'] as Map));
+    else if (s['restaurantName'] is String) bill = BillProfile(restaurantName: s['restaurantName'] as String, address: bill.address, phone: bill.phone, taxId: bill.taxId, footer: bill.footer, currencySymbol: bill.currencySymbol);
     if (s.containsKey('kitchenPrinterIp')) kitchenPrinterIp = s['kitchenPrinterIp'] as String?;
     if (s.containsKey('cashierPrinterIp')) cashierPrinterIp = s['cashierPrinterIp'] as String?;
     if (categories.isEmpty) _seed();
     notifyListeners();
   }
 
-  Future<void> saveSettings({String? name, String? kitchenIp, String? cashierIp}) async {
-    if (name != null) restaurantName = name;
+  Future<void> saveSettings({BillProfile? billProfile, String? kitchenIp, String? cashierIp}) async {
+    if (billProfile != null) bill = billProfile;
     if (kitchenIp != null) kitchenPrinterIp = kitchenIp.isEmpty ? null : kitchenIp;
     if (cashierIp != null) cashierPrinterIp = cashierIp.isEmpty ? null : cashierIp;
     await _persist();
     if (isMain) _server?.broadcast('state.replace', fullState());
     notifyListeners();
   }
+
+  Future<bool> testKitchenPrinter() async {
+    if (kitchenPrinterIp == null || kitchenPrinterIp!.isEmpty) return false;
+    return PrintService.testPrint(bill: bill, ip: kitchenPrinterIp!);
+  }
+
+  Future<bool> testCashierPrinter() async {
+    if (cashierPrinterIp == null || cashierPrinterIp!.isEmpty) return false;
+    return PrintService.testPrint(bill: bill, ip: cashierPrinterIp!);
+  }
+
+  String billPreviewFor(Order order) => PrintService.buildBillPreview(order: order, bill: bill);
 
   Future<void> startAsMain() async {
     isMain = true; role = DeviceRole.main;
@@ -177,6 +200,19 @@ class AppController extends ChangeNotifier {
       final orderId = payload['orderId'] as String?;
       final items = (payload['items'] as List? ?? []).map((e) => OrderItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
       if (orderId != null && items.isNotEmpty) _applyAddItems(orderId, items);
+    } else if (type == 'inventory.upsert') {
+      upsertInventoryItem(InventoryItem.fromJson(Map<String, dynamic>.from(payload)));
+      return;
+    } else if (type == 'inventory.delete') {
+      final id = payload['id'] as String?;
+      if (id != null) deleteInventoryItem(id);
+      return;
+    } else if (type == 'settings.update') {
+      if (payload['bill'] is Map) bill = BillProfile.fromJson(Map<String, dynamic>.from(payload['bill'] as Map));
+      if (payload.containsKey('kitchenPrinterIp')) kitchenPrinterIp = payload['kitchenPrinterIp'] as String?;
+      if (payload.containsKey('cashierPrinterIp')) cashierPrinterIp = payload['cashierPrinterIp'] as String?;
+      _server?.broadcast('state.replace', fullState());
+      _schedulePersist();
     }
     _schedulePersist();
     notifyListeners();
@@ -195,13 +231,12 @@ class AppController extends ChangeNotifier {
 
   Future<void> _printKitchen(Order order) async {
     if (kitchenPrinterIp == null || kitchenPrinterIp!.isEmpty) return;
-    await PrintService.printKitchenTicket(order: order, restaurantName: restaurantName, networkIp: kitchenPrinterIp);
+    await PrintService.printKitchenTicket(order: order, bill: bill, networkIp: kitchenPrinterIp);
   }
 
   Future<void> _printReceipt(Order order) async {
     if (cashierPrinterIp == null || cashierPrinterIp!.isEmpty) return;
-    final bytes = PrintService.buildPaymentTicket(order: order, restaurantName: restaurantName);
-    await PrintService.sendToNetworkPrinter(ip: cashierPrinterIp!, data: bytes);
+    await PrintService.printPaymentTicket(order: order, bill: bill, networkIp: cashierPrinterIp);
   }
 
   Future<bool> connectToMain(String host, {DeviceRole asRole = DeviceRole.orderTaker}) async {
@@ -316,6 +351,91 @@ class AppController extends ChangeNotifier {
     if (!isMain) return;
     inventory = inventory.map((i) => i.id != id ? i : InventoryItem(id: i.id, name: i.name, unit: i.unit, quantity: qty, lowStockThreshold: i.lowStockThreshold, linkedMenuItemId: i.linkedMenuItemId)).toList();
     _server?.broadcast('state.replace', fullState()); _schedulePersist(); notifyListeners();
+  }
+
+  void upsertInventoryItem(InventoryItem item) {
+    if (!isMain && !serverRunning) return;
+    final idx = inventory.indexWhere((i) => i.id == item.id);
+    if (idx >= 0) inventory = [...inventory]..[idx] = item; else inventory = [...inventory, item];
+    if (isMain) { _server?.broadcast('state.replace', fullState()); _schedulePersist(); }
+    notifyListeners();
+  }
+
+  void addInventoryItem({required String name, double quantity = 0, String unit = 'pcs', double lowStockThreshold = 5, String? linkedMenuItemId}) {
+    if (!isMain) return;
+    upsertInventoryItem(InventoryItem(name: name, quantity: quantity, unit: unit, lowStockThreshold: lowStockThreshold, linkedMenuItemId: linkedMenuItemId));
+  }
+
+  void deleteInventoryItem(String id) {
+    if (!isMain) return;
+    inventory = inventory.where((i) => i.id != id).toList();
+    _server?.broadcast('state.replace', fullState()); _schedulePersist(); notifyListeners();
+  }
+
+  int importInventoryCsv(String raw, {bool replaceAll = false}) {
+    if (!isMain) return 0;
+    final lines = raw.split(RegExp(r'[\r\n]+')).map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+    if (lines.isEmpty) return 0;
+    var start = 0;
+    final first = lines.first.toLowerCase();
+    if (first.contains('name') && (first.contains('qty') || first.contains('quantity') || first.contains(','))) start = 1;
+    final imported = <InventoryItem>[];
+    for (var i = start; i < lines.length; i++) {
+      final parts = lines[i].contains('\t') ? lines[i].split('\t') : _parseCsvLine(lines[i]);
+      if (parts.isEmpty) continue;
+      final name = parts[0].trim();
+      if (name.isEmpty) continue;
+      final qty = parts.length > 1 ? double.tryParse(parts[1].trim().replaceAll(',', '')) ?? 0 : 0;
+      final unit = parts.length > 2 && parts[2].trim().isNotEmpty ? parts[2].trim() : 'pcs';
+      final low = parts.length > 3 ? double.tryParse(parts[3].trim().replaceAll(',', '')) ?? 5 : 5;
+      imported.add(InventoryItem(name: name, quantity: qty, unit: unit, lowStockThreshold: low));
+    }
+    if (imported.isEmpty) return 0;
+    if (replaceAll) { inventory = imported; }
+    else {
+      for (final item in imported) {
+        final idx = inventory.indexWhere((e) => e.name.toLowerCase() == item.name.toLowerCase());
+        if (idx >= 0) {
+          inventory = [...inventory]..[idx] = InventoryItem(id: inventory[idx].id, name: item.name, unit: item.unit, quantity: item.quantity, lowStockThreshold: item.lowStockThreshold, linkedMenuItemId: inventory[idx].linkedMenuItemId);
+        } else { inventory = [...inventory, item]; }
+      }
+    }
+    _server?.broadcast('state.replace', fullState()); _schedulePersist(); notifyListeners();
+    return imported.length;
+  }
+
+  List<String> _parseCsvLine(String line) {
+    final result = <String>[];
+    final sb = StringBuffer();
+    var inQuotes = false;
+    for (var i = 0; i < line.length; i++) {
+      final c = line[i];
+      if (c == '"') { inQuotes = !inQuotes; }
+      else if ((c == ',' && !inQuotes) || (c == ';' && !inQuotes)) { result.add(sb.toString()); sb.clear(); }
+      else { sb.write(c); }
+    }
+    result.add(sb.toString());
+    return result;
+  }
+
+  int importInventoryLines(String raw) {
+    final buf = StringBuffer();
+    for (final line in raw.split(RegExp(r'[\r\n]+'))) {
+      final t = line.trim();
+      if (t.isEmpty) continue;
+      final m = RegExp(r'^(.+?)\s+(\d+(?:\.\d+)?)\s*$').firstMatch(t);
+      if (m != null) buf.writeln('${m.group(1)},${m.group(2)},pcs,5');
+      else buf.writeln('$t,0,pcs,5');
+    }
+    return importInventoryCsv(buf.toString());
+  }
+
+  Map<String, dynamic> salesReport({int days = 1}) {
+    final now = DateTime.now().toUtc();
+    final start = DateTime.utc(now.year, now.month, now.day).subtract(Duration(days: days - 1));
+    final paid = orders.where((o) => o.isPaid && o.paidAt != null && !o.paidAt!.isBefore(start)).toList();
+    final total = paid.fold<double>(0, (s, o) => s + o.total.asDouble);
+    return {'days': days, 'orders': paid.length, 'total': total, 'currency': bill.currencySymbol, 'lowStock': lowStockItems.length};
   }
 
   Future<bool> activateLicense(String key) async {
