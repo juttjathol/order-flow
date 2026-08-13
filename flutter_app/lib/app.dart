@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import 'core/l10n/app_strings.dart';
+import 'core/state/app_controller.dart';
 import 'features/license/license_screen.dart';
 import 'features/admin/admin_home.dart';
 import 'features/order_taking/order_taker_home.dart';
@@ -11,10 +14,10 @@ import 'shared/theme/app_theme.dart';
 import 'shared/widgets/animated_widgets.dart';
 
 final _router = GoRouter(
-  initialLocation: '/',
+  initialLocation: '/license',
   routes: [
-    GoRoute(path: '/', builder: (_, __) => const RoleSelectScreen()),
     GoRoute(path: '/license', builder: (_, __) => const LicenseScreen()),
+    GoRoute(path: '/', builder: (_, __) => const RoleSelectScreen()),
     GoRoute(path: '/admin', builder: (_, __) => const AdminHome()),
     GoRoute(path: '/order-taker', builder: (_, __) => const OrderTakerHome()),
     GoRoute(path: '/kitchen', builder: (_, __) => const KitchenHome()),
@@ -22,11 +25,13 @@ final _router = GoRouter(
   ],
 );
 
-class OrderFlowApp extends StatelessWidget {
+class OrderFlowApp extends ConsumerWidget {
   const OrderFlowApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final locale = ref.watch(appControllerProvider.select((a) => a.localeCode));
+    final s = S(locale);
     return MaterialApp.router(
       title: 'Order Flow',
       debugShowCheckedModeBanner: false,
@@ -34,6 +39,12 @@ class OrderFlowApp extends StatelessWidget {
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.system,
       routerConfig: _router,
+      builder: (context, child) {
+        return Directionality(
+          textDirection: s.direction,
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
   }
 }
@@ -43,72 +54,104 @@ class RoleSelectScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final app = ref.watch(appControllerProvider);
+    final s = S(app.localeCode);
+
+    if (!app.hasLicense) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go('/license');
+      });
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDark
-                ? const [Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF0F172A)]
-                : const [Color(0xFFF0F9FF), Color(0xFFF8FAFC), Color(0xFFECFEFF)],
-          ),
-        ),
-        child: SafeArea(
-          child: CustomScrollView(
-            slivers: [
-              SpiverHeader(),
-              const SliverToBoxAdapter(child: SizedBox(height: 28)),
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    FadeSlideIn(index: 3, child: _RoleCard(icon: Icons.dns_rounded, colors: const [Color(0xFF0EA5E9), Color(0xFF0284C7)], title: 'Main Device', subtitle: 'PC or tablet as the server. Menu, inventory, reports and local web dashboard.', badge: 'RECOMMENDED', onTap: () => context.go('/admin'))),
-                    const SizedBox(height: 12),
-                    FadeSlideIn(index: 4, child: _RoleCard(icon: Icons.point_of_sale_rounded, colors: const [Color(0xFF14B8A6), Color(0xFF0D9488)], title: 'Order Taker', subtitle: 'Wait staff · take orders, assign table, send to kitchen.', onTap: () => context.go('/order-taker'))),
-                    const SizedBox(height: 12),
-                    FadeSlideIn(index: 5, child: _RoleCard(icon: Icons.soup_kitchen_rounded, colors: const [Color(0xFFF59E0B), Color(0xFFD97706)], title: 'Kitchen Display', subtitle: 'Live tickets · mark preparing and ready · print support.', onTap: () => context.go('/kitchen'))),
-                    const SizedBox(height: 12),
-                    FadeSlideIn(index: 6, child: _RoleCard(icon: Icons.payments_rounded, colors: const [Color(0xFF8B5CF6), Color(0xFF7C3AED)], title: 'Cashier / Reception', subtitle: 'Close bills, print receipts, manage payments.', onTap: () => context.go('/cashier'))),
-                    const SizedBox(height: 28),
-                    FadeSlideIn(index: 7, child: Center(child: TextButton.icon(onPressed: () => context.go('/license'), icon: const Icon(Icons.vpn_key_rounded, size: 18), label: const Text('License / Activation')))),
-                    const SizedBox(height: 16),
-                    FadeSlideIn(index: 8, child: Text('All devices share orders in real time on your local network', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.grey.shade500))),
-                    const SizedBox(height: 32),
-                  ]),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class SpiverHeader extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 36, 24, 8),
-        child: Column(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(24),
           children: [
-            FadeSlideIn(index: 0, child: Container(
-              width: 72, height: 72,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF0EA5E9), Color(0xFF14B8A6)]),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: const Color(0xFF0EA5E9).withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 8))],
-              ),
-              child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 36),
-            )),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(s.appName,
+                          style: s.isUrdu
+                              ? GoogleFonts.notoNastaliqUrdu(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.7,
+                                  color: const Color(0xFF0F172A))
+                              : const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A))),
+                      Text(s.chooseRole,
+                          style: s.isUrdu
+                              ? GoogleFonts.notoNastaliqUrdu(
+                                  color: AppColors.muted, fontSize: 15, height: 1.6)
+                              : TextStyle(color: Colors.grey.shade600)),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => app.setLocale(app.localeCode == 'ur' ? 'en' : 'ur'),
+                  child: Text(
+                    app.localeCode == 'ur' ? 'EN' : 'اردو',
+                    style: app.localeCode == 'en'
+                        ? GoogleFonts.notoNastaliqUrdu(fontWeight: FontWeight.w700)
+                        : const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 20),
-            FadeSlideIn(index: 1, child: Text('Order Flow', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800, letterSpacing: -0.8))),
-            const SizedBox(height: 6),
-            FadeSlideIn(index: 2, child: Text('Professional order system · works offline on your network', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600, fontSize: 14, height: 1.4))),
+            FadeSlideIn(
+              index: 0,
+              child: _RoleCard(
+                icon: Icons.dns_rounded,
+                title: s.mainDevice,
+                subtitle: s.isUrdu ? 'سرور، مینو، انوینٹری' : 'Server · menu · inventory',
+                color: AppColors.primary,
+                onTap: () => context.go('/admin'),
+              ),
+            ),
+            FadeSlideIn(
+              index: 1,
+              child: _RoleCard(
+                icon: Icons.room_service_rounded,
+                title: s.orderTaker,
+                subtitle: s.isUrdu ? 'ٹیبل آرڈر لیں' : 'Take table orders',
+                color: const Color(0xFF8B5CF6),
+                onTap: () => context.go('/order-taker'),
+              ),
+            ),
+            FadeSlideIn(
+              index: 2,
+              child: _RoleCard(
+                icon: Icons.soup_kitchen_rounded,
+                title: s.kitchen,
+                subtitle: s.isUrdu ? 'کچن کیو' : 'Kitchen queue',
+                color: AppColors.warning,
+                onTap: () => context.go('/kitchen'),
+              ),
+            ),
+            FadeSlideIn(
+              index: 3,
+              child: _RoleCard(
+                icon: Icons.point_of_sale_rounded,
+                title: s.cashier,
+                subtitle: s.isUrdu ? 'بل اور ادائیگی' : 'Bills & payment',
+                color: AppColors.success,
+                onTap: () => context.go('/cashier'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () => context.go('/license'),
+              icon: const Icon(Icons.vpn_key_rounded, size: 18),
+              label: Text(s.license),
+            ),
           ],
         ),
       ),
@@ -118,53 +161,60 @@ class SpiverHeader extends StatelessWidget {
 
 class _RoleCard extends StatelessWidget {
   final IconData icon;
-  final List<Color> colors;
   final String title;
   final String subtitle;
-  final String? badge;
+  final Color color;
   final VoidCallback onTap;
-
-  const _RoleCard({required this.icon, required this.colors, required this.title, required this.subtitle, this.badge, required this.onTap});
+  const _RoleCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return ScaleTap(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: isDark ? const Color(0xFF334155) : Colors.grey.shade200),
-          boxShadow: isDark ? null : [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 16, offset: const Offset(0, 6))],
+          side: BorderSide(color: Colors.grey.shade200),
         ),
-        child: Row(
-          children: [
-            GradientIconBox(icon: icon, colors: colors),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Flexible(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, letterSpacing: -0.2))),
-                    if (badge != null) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: colors.first.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
-                        child: Text(badge!, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: colors.first, letterSpacing: 0.4)),
-                      ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, color: color, size: 28),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: const TextStyle(
+                              fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                      const SizedBox(height: 2),
+                      Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
                     ],
-                  ]),
-                  const SizedBox(height: 4),
-                  Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.35)),
-                ],
-              ),
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+              ],
             ),
-            Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey.shade400),
-          ],
+          ),
         ),
       ),
     );
