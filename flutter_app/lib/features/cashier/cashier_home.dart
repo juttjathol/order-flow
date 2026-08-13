@@ -85,7 +85,7 @@ class _CashierHomeState extends ConsumerState<CashierHome> {
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     children: [
-                      Text('${it.quantity}× ${it.name}'),
+                      Text('${it.quantity}× ${it.nameSnapshot}'),
                       const Spacer(),
                       Text('$sym${it.lineTotal.asDouble.toStringAsFixed(2)}',
                           style: const TextStyle(fontWeight: FontWeight.w600)),
