@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 class S {
   final String code;
   const S(this.code);
