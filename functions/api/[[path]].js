@@ -177,7 +177,6 @@ export async function onRequest(context) {
     } catch (e) { return error(e.message || 'Login failed', 500); }
   }
 
-  // Public app sign-up (appears in SaaS customers list)
   if (path === '/api/v1/signup' && request.method === 'POST') {
     try {
       const body = await request.json();
@@ -185,12 +184,12 @@ export async function onRequest(context) {
       const phone = (body.phone || '').trim();
       const email = (body.email || '').trim() || null;
       const deviceId = (body.deviceId || '').trim() || null;
-      if (!name && !phone) return error('name or phone required');
+      if (!name && !phone && !email) return error('name or email required');
       const id = crypto.randomUUID();
       const notes = ['App signup', deviceId ? 'device:' + deviceId : null].filter(Boolean).join(' | ');
       await env.DB.prepare(
         'INSERT INTO customers (id, name, contact_email, contact_phone, notes) VALUES (?, ?, ?, ?, ?)'
-      ).bind(id, name || phone || 'App user', email, phone || null, notes).run();
+      ).bind(id, name || (email || 'App user'), email, phone || null, notes).run();
       return json({ ok: true, customerId: id }, 201);
     } catch (e) { return error(e.message, 500); }
   }
