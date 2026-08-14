@@ -148,6 +148,26 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Full JSON backup of menu, orders, inventory, bill profile.
+  String exportBackupJson() {
+    final map = {
+      ...fullState(),
+      'exportedAt': DateTime.now().toUtc().toIso8601String(),
+      'version': 1,
+    };
+    return const JsonEncoder.withIndent('  ').convert(map);
+  }
+
+  /// Restore from backup JSON. Returns number of top-level keys applied.
+  int importBackupJson(String raw) {
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map) throw const FormatException('Backup must be a JSON object');
+    final map = Map<String, dynamic>.from(decoded);
+    applyState(map);
+    _schedulePersist();
+    return map.keys.length;
+  }
+
   Future<void> saveSettings({BillProfile? billProfile, String? kitchenIp, String? cashierIp}) async {
     if (billProfile != null) bill = billProfile;
     if (kitchenIp != null) kitchenPrinterIp = kitchenIp.isEmpty ? null : kitchenIp;
@@ -448,7 +468,6 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Public signup – stores name + email in SaaS customers table so the seller dashboard shows contact emails.
   Future<void> registerSignup({required String name, required String email}) async {
     final n = name.trim();
     final e = email.trim().toLowerCase();
@@ -465,9 +484,7 @@ class AppController extends ChangeNotifier {
             }),
           )
           .timeout(const Duration(seconds: 10));
-    } catch (_) {
-      // Offline / network – ignore; license activation still works offline with grace.
-    }
+    } catch (_) {}
   }
 
   Future<bool> activateLicense(String key) async {
@@ -484,17 +501,14 @@ class AppController extends ChangeNotifier {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final p = await SharedPreferences.getInstance();
 
-      // Reject: invalid / expired / revoked / bound to another device
       if (res.statusCode != 200 || data['valid'] != true) {
         final err = data['error']?.toString() ?? 'Invalid license';
         licenseMessage = err;
-        // Do NOT grant access when server explicitly rejects (e.g. other device bound)
         if (res.statusCode == 401 || res.statusCode == 403) {
           license = null;
           notifyListeners();
           return false;
         }
-        // Soft fail for other cases – short pending window only if key format ok
         license = LicenseInfo(
           key: key.trim(),
           customerId: '',
@@ -527,7 +541,6 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      // Offline only: allow grace if we already had a stored key for this device
       final p = await SharedPreferences.getInstance();
       final stored = p.getString('license_key');
       if (stored != null && stored == key.trim()) {
