@@ -18,7 +18,7 @@ class LicenseScreen extends ConsumerStatefulWidget {
 class _LicenseScreenState extends ConsumerState<LicenseScreen> {
   final _c = TextEditingController();
   final _name = TextEditingController();
-  final _phone = TextEditingController();
+  final _email = TextEditingController();
   bool _loading = false;
 
   Future<void> _activate() async {
@@ -26,8 +26,8 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
     if (key.isEmpty) return;
     setState(() => _loading = true);
     final app = ref.read(appControllerProvider);
-    if (_name.text.trim().isNotEmpty || _phone.text.trim().isNotEmpty) {
-      await app.registerSignup(name: _name.text.trim(), phone: _phone.text.trim());
+    if (_name.text.trim().isNotEmpty || _email.text.trim().isNotEmpty) {
+      await app.registerSignup(name: _name.text.trim(), phone: '', email: _email.text.trim());
     }
     await app.activateLicense(key);
     setState(() => _loading = false);
@@ -175,10 +175,10 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
                 const SizedBox(height: 8),
                 TextField(controller: _name, style: const TextStyle(color: Colors.white), decoration: _fieldDec(s.isUrdu ? 'ریستوراں / آپ کا نام' : 'Restaurant or your name')),
                 const SizedBox(height: 12),
-                Text(s.isUrdu ? 'فون' : 'Phone',
+                Text(s.isUrdu ? 'ای میل' : 'Email',
                     style: s.isUrdu ? _urdu(15, color: Colors.white70) : const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
-                TextField(controller: _phone, keyboardType: TextInputType.phone, style: const TextStyle(color: Colors.white), decoration: _fieldDec('+60...')),
+                TextField(controller: _email, keyboardType: TextInputType.emailAddress, style: const TextStyle(color: Colors.white), decoration: _fieldDec('you@restaurant.com')),
                 const SizedBox(height: 16),
                 Text(s.licenseKey,
                     style: s.isUrdu ? _urdu(15, color: Colors.white70) : const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
