@@ -27,7 +27,7 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
     setState(() => _loading = true);
     final app = ref.read(appControllerProvider);
     if (_name.text.trim().isNotEmpty || _email.text.trim().isNotEmpty) {
-      await app.registerSignup(name: _name.text.trim(), phone: '', email: _email.text.trim());
+      await app.registerSignup(name: _name.text.trim(), email: _email.text.trim());
     }
     await app.activateLicense(key);
     setState(() => _loading = false);
@@ -58,22 +58,11 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
   }
 
   TextStyle _urdu(double size, {Color? color, FontWeight? w}) =>
-      GoogleFonts.notoNastaliqUrdu(fontSize: size, color: color, fontWeight: w, height: 1.7);
-
-  InputDecoration _fieldDec(String hint) => InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-        filled: true,
-        fillColor: Colors.white.withOpacity(0.1),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.white.withOpacity(0.15)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.primary, width: 2),
-        ),
+      GoogleFonts.notoNastaliqUrdu(
+        fontSize: size,
+        color: color,
+        fontWeight: w,
+        height: 1.7,
       );
 
   @override
@@ -99,7 +88,9 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
               children: [
                 Row(children: [
                   Text(s.language,
-                      style: s.isUrdu ? _urdu(13, color: Colors.white60) : const TextStyle(color: Colors.white60, fontSize: 13)),
+                      style: s.isUrdu
+                          ? _urdu(13, color: Colors.white60)
+                          : const TextStyle(color: Colors.white60, fontSize: 13)),
                   const Spacer(),
                   _LangChip(label: s.english, selected: !s.isUrdu, onTap: () => app.setLocale('en')),
                   const SizedBox(width: 8),
@@ -112,7 +103,11 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
                     borderRadius: BorderRadius.circular(24),
                     gradient: const LinearGradient(colors: [Color(0xFF0EA5E9), Color(0xFF14B8A6)]),
                     boxShadow: [
-                      BoxShadow(color: const Color(0xFF0EA5E9).withOpacity(0.35), blurRadius: 24, offset: const Offset(0, 12)),
+                      BoxShadow(
+                        color: const Color(0xFF0EA5E9).withOpacity(0.35),
+                        blurRadius: 24,
+                        offset: const Offset(0, 12),
+                      ),
                     ],
                   ),
                   child: Column(children: [
@@ -126,7 +121,9 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
                     const SizedBox(height: 8),
                     Text(s.tagline,
                         textAlign: TextAlign.center,
-                        style: s.isUrdu ? _urdu(15, color: Colors.white70) : const TextStyle(color: Colors.white70, height: 1.4)),
+                        style: s.isUrdu
+                            ? _urdu(15, color: Colors.white70)
+                            : const TextStyle(color: Colors.white70, height: 1.4)),
                   ]),
                 ),
                 const SizedBox(height: 28),
@@ -136,7 +133,9 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
                         : const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Colors.white)),
                 const SizedBox(height: 8),
                 Text(s.activateHint,
-                    style: s.isUrdu ? _urdu(14, color: Colors.white60) : const TextStyle(color: Colors.white60, height: 1.4)),
+                    style: s.isUrdu
+                        ? _urdu(14, color: Colors.white60)
+                        : const TextStyle(color: Colors.white60, height: 1.4)),
                 const SizedBox(height: 20),
                 Material(
                   color: Colors.white.withOpacity(0.08),
@@ -149,20 +148,29 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
                       child: Row(children: [
                         Container(
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: const Color(0xFF25D366), borderRadius: BorderRadius.circular(14)),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF25D366),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                           child: const Icon(Icons.chat, color: Colors.white, size: 28),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(s.contactWhatsApp,
-                                style: s.isUrdu
-                                    ? _urdu(16, color: Colors.white, w: FontWeight.w700)
-                                    : const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
-                            const Text('+60 11-2897 9730', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                            Text(s.whatsAppSub,
-                                style: s.isUrdu ? _urdu(12, color: Colors.white54) : const TextStyle(color: Colors.white54, fontSize: 12)),
-                          ]),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(s.contactWhatsApp,
+                                  style: s.isUrdu
+                                      ? _urdu(16, color: Colors.white, w: FontWeight.w700)
+                                      : const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                              const Text('+60 11-2897 9730',
+                                  style: TextStyle(color: Colors.white54, fontSize: 12)),
+                              Text(s.whatsAppSub,
+                                  style: s.isUrdu
+                                      ? _urdu(12, color: Colors.white54)
+                                      : const TextStyle(color: Colors.white54, fontSize: 12)),
+                            ],
+                          ),
                         ),
                         const Icon(Icons.arrow_forward_ios, color: Colors.white38, size: 16),
                       ]),
@@ -171,23 +179,73 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
                 ),
                 const SizedBox(height: 24),
                 Text(s.isUrdu ? 'نام' : 'Your name',
-                    style: s.isUrdu ? _urdu(15, color: Colors.white70) : const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+                    style: s.isUrdu
+                        ? _urdu(15, color: Colors.white70)
+                        : const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
-                TextField(controller: _name, style: const TextStyle(color: Colors.white), decoration: _fieldDec(s.isUrdu ? 'ریستوراں / آپ کا نام' : 'Restaurant or your name')),
+                TextField(
+                  controller: _name,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: s.isUrdu ? 'ریستوراں / آپ کا نام' : 'Restaurant or your name',
+                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.1),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: Colors.white.withOpacity(0.15)),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 Text(s.isUrdu ? 'ای میل' : 'Email',
-                    style: s.isUrdu ? _urdu(15, color: Colors.white70) : const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+                    style: s.isUrdu
+                        ? _urdu(15, color: Colors.white70)
+                        : const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
-                TextField(controller: _email, keyboardType: TextInputType.emailAddress, style: const TextStyle(color: Colors.white), decoration: _fieldDec('you@restaurant.com')),
+                TextField(
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'you@restaurant.com',
+                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.1),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: Colors.white.withOpacity(0.15)),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 16),
                 Text(s.licenseKey,
-                    style: s.isUrdu ? _urdu(15, color: Colors.white70) : const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+                    style: s.isUrdu
+                        ? _urdu(15, color: Colors.white70)
+                        : const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _c,
                   textCapitalization: TextCapitalization.characters,
                   style: const TextStyle(color: Colors.white, letterSpacing: 1.2),
-                  decoration: _fieldDec(s.licenseHint),
+                  decoration: InputDecoration(
+                    hintText: s.licenseHint,
+                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.1),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: Colors.white.withOpacity(0.15)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 SizedBox(
@@ -210,7 +268,9 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
                 ),
                 if (app.licenseMessage != null) ...[
                   const SizedBox(height: 12),
-                  Text(app.licenseMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF7DD3FC))),
+                  Text(app.licenseMessage!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Color(0xFF7DD3FC))),
                 ],
                 if (licensed) ...[
                   const SizedBox(height: 20),
@@ -221,16 +281,24 @@ class _LicenseScreenState extends ConsumerState<LicenseScreen> {
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: AppColors.success.withOpacity(0.4)),
                     ),
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('${s.currentLicense}: ${app.license!.key}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                      Text('${s.expires}: ${app.license!.expiresAt.toLocal().toString().split('.').first}',
-                          style: const TextStyle(color: Colors.white60, fontSize: 13)),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.tonal(onPressed: () => context.go('/'), child: Text(s.continueApp)),
-                      ),
-                    ]),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('${s.currentLicense}: ${app.license!.key}',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                        Text(
+                            '${s.expires}: ${app.license!.expiresAt.toLocal().toString().split('.').first}',
+                            style: const TextStyle(color: Colors.white60, fontSize: 13)),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.tonal(
+                            onPressed: () => context.go('/'),
+                            child: Text(s.continueApp),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ],

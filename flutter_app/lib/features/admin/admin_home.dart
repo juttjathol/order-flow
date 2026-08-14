@@ -42,7 +42,7 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
           const Text('Menu', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
           Expanded(child: ListView(children: app.menuItems.map((m) => ListTile(
             title: Text(m.name),
-            subtitle: Text('${app.bill.currencySymbol}${m.price.asDouble.toStringAsFixed(2)}'),
+            subtitle: Text('\$${m.price.asDouble.toStringAsFixed(2)}'),
             trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () { app.deleteMenuItem(m.id); Navigator.pop(ctx); }),
           )).toList())),
           FilledButton.icon(onPressed: () {
@@ -160,12 +160,19 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
         TextField(controller: phone, decoration: const InputDecoration(labelText: 'Phone')),
         TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')),
         TextField(controller: footer, decoration: const InputDecoration(labelText: 'Receipt footer')),
-        TextField(controller: cur, decoration: const InputDecoration(labelText: 'Currency symbol')),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Currency for menu prices & bills', style: TextStyle(fontWeight: FontWeight.w600)),
+        ),
+        const SizedBox(height: 4),
+        TextField(controller: cur, decoration: const InputDecoration(labelText: 'Currency symbol (\$ € Rs RM)')),
         Wrap(spacing: 6, children: ['\$', '€', '£', 'Rs', 'RM', 'AED', '₹'].map((sym) => ActionChip(
-          label: Text(sym),
-          onPressed: () => cur.text = sym,
-        )).toList()),
+              label: Text(sym),
+              onPressed: () => cur.text = sym,
+            )).toList()),
+        Text('Applies to menu grid, cart, kitchen tickets and customer bills.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
         const Divider(),
         TextField(controller: kitchen, decoration: const InputDecoration(labelText: 'Kitchen printer IP')),
         TextField(controller: cashier, decoration: const InputDecoration(labelText: 'Cashier printer IP')),
@@ -263,6 +270,7 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
           title: const Text('Export backup'),
           subtitle: const Text('Menu + inventory + bill as text'),
           onTap: () {
+            final app = ref.read(appControllerProvider);
             final json = app.exportBackupJson();
             showDialog(context: context, builder: (d) => AlertDialog(
               title: const Text('Backup JSON'),

@@ -51,4 +51,6 @@ CREATE INDEX IF NOT EXISTS idx_licenses_bound ON licenses(bound_device_id);
 -- Migration for existing D1 databases (run in wrangler d1 execute if needed):
 -- ALTER TABLE licenses ADD COLUMN bound_device_id TEXT;
 -- ALTER TABLE licenses ADD COLUMN bound_at TEXT;
+
+-- Optional columns (Worker also auto-adds these)
 -- ALTER TABLE licenses ADD COLUMN is_trial INTEGER DEFAULT 0;

@@ -57,7 +57,6 @@ class AppController extends ChangeNotifier {
     deviceName = p.getString('device_name') ?? 'Tablet-${deviceId.substring(0, 4)}';
     kitchenPrinterIp = p.getString('kitchen_printer_ip');
     cashierPrinterIp = p.getString('cashier_printer_ip');
-    localeCode = p.getString('locale_code') ?? 'en';
     final billJson = p.getString('bill_profile_json');
     if (billJson != null) {
       try { bill = BillProfile.fromJson(jsonDecode(billJson) as Map<String, dynamic>); } catch (_) {}
@@ -69,17 +68,11 @@ class AppController extends ChangeNotifier {
     if (k != null) {
       license = LicenseInfo(key: k, customerId: p.getString('license_customer_id') ?? '', customerName: p.getString('license_customer_name') ?? '', expiresAt: DateTime.tryParse(p.getString('license_expires') ?? '') ?? DateTime.now().add(const Duration(days: 30)), isActive: true);
     }
+    localeCode = p.getString('locale_code') ?? 'en';
     final saved = p.getString('main_state_json');
     if (saved != null && saved.isNotEmpty) {
       try { applyState(jsonDecode(saved) as Map<String, dynamic>); } catch (_) { _seed(); }
     } else { _seed(); }
-    notifyListeners();
-  }
-
-  Future<void> setLocale(String code) async {
-    localeCode = (code == 'ur') ? 'ur' : 'en';
-    final p = await SharedPreferences.getInstance();
-    await p.setString('locale_code', localeCode);
     notifyListeners();
   }
 
@@ -448,83 +441,112 @@ class AppController extends ChangeNotifier {
     return {'days': days, 'orders': paid.length, 'total': total, 'currency': bill.currencySymbol, 'lowStock': lowStockItems.length};
   }
 
-  Future<bool> registerSignup({required String name, required String phone, String email = ''}) async {
-    try {
-      final res = await http.post(
-        Uri.parse('$licenseApiBase/api/v1/signup'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'name': name.trim(), 'phone': phone.trim(), 'email': email.trim(), 'deviceId': deviceId}),
-      ).timeout(const Duration(seconds: 12));
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('signup_name', name.trim());
-        await prefs.setString('signup_phone', phone.trim());
-        return true;
-      }
-      return false;
-    } catch (_) {
-      return false;
-    }
+  Future<void> setLocale(String code) async {
+    localeCode = (code == 'ur') ? 'ur' : 'en';
+    final p = await SharedPreferences.getInstance();
+    await p.setString('locale_code', localeCode);
+    notifyListeners();
   }
 
-  String exportBackupJson() {
-    return jsonEncode({
-      'version': 1,
-      'exportedAt': DateTime.now().toUtc().toIso8601String(),
-      'bill': bill.toJson(),
-      'categories': categories.map((c) => c.toJson()).toList(),
-      'menuItems': menuItems.map((m) => m.toJson()).toList(),
-      'inventory': inventory.map((i) => i.toJson()).toList(),
-    });
-  }
-
-  int importBackupJson(String raw) {
-    if (!isMain) return 0;
+  /// Public signup – stores name + email in SaaS customers table so the seller dashboard shows contact emails.
+  Future<void> registerSignup({required String name, required String email}) async {
+    final n = name.trim();
+    final e = email.trim().toLowerCase();
+    if (n.isEmpty && e.isEmpty) return;
     try {
-      final data = jsonDecode(raw) as Map<String, dynamic>;
-      if (data['bill'] is Map) bill = BillProfile.fromJson(Map<String, dynamic>.from(data['bill'] as Map));
-      if (data['categories'] is List) {
-        categories = (data['categories'] as List).map((e) => MenuCategory.fromJson(Map<String, dynamic>.from(e as Map))).toList();
-      }
-      if (data['menuItems'] is List) {
-        menuItems = (data['menuItems'] as List).map((e) => MenuItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
-      }
-      if (data['inventory'] is List) {
-        inventory = (data['inventory'] as List).map((e) => InventoryItem.fromJson(Map<String, dynamic>.from(e as Map))).toList();
-      }
-      _server?.broadcast('state.replace', fullState());
-      _schedulePersist();
-      notifyListeners();
-      return menuItems.length + inventory.length;
+      await http
+          .post(
+            Uri.parse('$licenseApiBase/api/v1/signup'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'name': n.isEmpty ? (e.isNotEmpty ? e.split('@').first : 'Restaurant') : n,
+              'email': e.isEmpty ? null : e,
+              'deviceId': deviceId,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
     } catch (_) {
-      return 0;
+      // Offline / network – ignore; license activation still works offline with grace.
     }
   }
 
   Future<bool> activateLicense(String key) async {
-    licenseMessage = null; notifyListeners();
+    licenseMessage = null;
+    notifyListeners();
     try {
-      final res = await http.post(Uri.parse('$licenseApiBase/api/v1/license/validate'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'licenseKey': key.trim(), 'deviceId': deviceId})).timeout(const Duration(seconds: 12));
+      final res = await http
+          .post(
+            Uri.parse('$licenseApiBase/api/v1/license/validate'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'licenseKey': key.trim(), 'deviceId': deviceId}),
+          )
+          .timeout(const Duration(seconds: 12));
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final p = await SharedPreferences.getInstance();
-      await p.setString('license_key', key.trim());
+
+      // Reject: invalid / expired / revoked / bound to another device
       if (res.statusCode != 200 || data['valid'] != true) {
-        licenseMessage = data['error']?.toString() ?? 'Invalid license';
-        license = LicenseInfo(key: key.trim(), customerId: '', customerName: 'Pending', expiresAt: DateTime.now().add(const Duration(days: 7)), isActive: true);
-        notifyListeners(); return false;
+        final err = data['error']?.toString() ?? 'Invalid license';
+        licenseMessage = err;
+        // Do NOT grant access when server explicitly rejects (e.g. other device bound)
+        if (res.statusCode == 401 || res.statusCode == 403) {
+          license = null;
+          notifyListeners();
+          return false;
+        }
+        // Soft fail for other cases – short pending window only if key format ok
+        license = LicenseInfo(
+          key: key.trim(),
+          customerId: '',
+          customerName: 'Pending',
+          expiresAt: DateTime.now().add(const Duration(days: 3)),
+          isActive: true,
+        );
+        await p.setString('license_key', key.trim());
+        notifyListeners();
+        return false;
       }
-      license = LicenseInfo(key: key.trim(), customerId: '${data['customerId'] ?? ''}', customerName: '${data['customerName'] ?? ''}', expiresAt: DateTime.tryParse('${data['expiresAt']}') ?? DateTime.now().add(const Duration(days: 30)), isActive: true, lastValidatedAt: DateTime.now().toUtc());
+
+      await p.setString('license_key', key.trim());
+      license = LicenseInfo(
+        key: key.trim(),
+        customerId: '${data['customerId'] ?? ''}',
+        customerName: '${data['customerName'] ?? ''}',
+        expiresAt: DateTime.tryParse('${data['expiresAt']}') ??
+            DateTime.now().add(const Duration(days: 30)),
+        isActive: true,
+        lastValidatedAt: DateTime.now().toUtc(),
+      );
       await p.setString('license_customer_id', license!.customerId);
       await p.setString('license_customer_name', license!.customerName);
       await p.setString('license_expires', license!.expiresAt.toIso8601String());
-      licenseMessage = 'License active until ${license!.expiresAt.toLocal().toString().split(' ').first}';
-      notifyListeners(); return true;
+      final first = data['firstActivation'] == true;
+      licenseMessage = first
+          ? 'Activated & bound to this device until ${license!.expiresAt.toLocal().toString().split(' ').first}'
+          : 'License active until ${license!.expiresAt.toLocal().toString().split(' ').first}';
+      notifyListeners();
+      return true;
     } catch (e) {
+      // Offline only: allow grace if we already had a stored key for this device
       final p = await SharedPreferences.getInstance();
-      await p.setString('license_key', key.trim());
-      license = LicenseInfo(key: key.trim(), customerId: '', customerName: 'Offline grace', expiresAt: DateTime.now().add(const Duration(days: 14)), isActive: true);
-      licenseMessage = 'Saved offline with grace period.';
-      notifyListeners(); return true;
+      final stored = p.getString('license_key');
+      if (stored != null && stored == key.trim()) {
+        license = LicenseInfo(
+          key: key.trim(),
+          customerId: p.getString('license_customer_id') ?? '',
+          customerName: p.getString('license_customer_name') ?? 'Offline grace',
+          expiresAt: DateTime.tryParse(p.getString('license_expires') ?? '') ??
+              DateTime.now().add(const Duration(days: 14)),
+          isActive: true,
+        );
+        licenseMessage = 'Offline – using saved license (reconnect to re-validate).';
+        notifyListeners();
+        return true;
+      }
+      licenseMessage = 'Need internet once to activate. Then works offline.';
+      license = null;
+      notifyListeners();
+      return false;
     }
   }
 

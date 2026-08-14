@@ -1,295 +1,616 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Order Flow · Seller Dashboard</title>
   <style>
-    :root {
-      --bg: #f4f6fb;
+    :root, [data-theme="light"] {
+      --bg: #f4f5f7;
       --sidebar: #ffffff;
       --card: #ffffff;
-      --text: #0f172a;
-      --muted: #64748b;
-      --accent: #f97316;
-      --accent2: #ea580c;
-      --border: #e2e8f0;
+      --border: #e8eaed;
+      --text: #1a1d21;
+      --muted: #6b7280;
+      --accent: #ff6a00;
+      --accent-soft: #fff4eb;
       --ok: #16a34a;
+      --ok-bg: #dcfce7;
       --danger: #dc2626;
-      --radius: 16px;
-      --shadow: 0 4px 20px rgba(15,23,42,.06);
+      --danger-bg: #fee2e2;
+      --warn: #d97706;
+      --warn-bg: #fef3c7;
+      --input-bg: #f9fafb;
+      --shadow: 0 1px 3px rgba(0,0,0,.06);
+      --banner1: #ff8a3d;
+      --banner2: #ff6a00;
+    }
+    [data-theme="dark"] {
+      --bg: #0f1419;
+      --sidebar: #161b22;
+      --card: #1c2128;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --accent: #ff7a1a;
+      --accent-soft: #3d2310;
+      --ok: #3fb950;
+      --ok-bg: #1a3d2a;
+      --danger: #f85149;
+      --danger-bg: #3d1a1a;
+      --warn: #d29922;
+      --warn-bg: #3d2e10;
+      --input-bg: #0d1117;
+      --shadow: 0 1px 3px rgba(0,0,0,.3);
+      --banner1: #c45a00;
+      --banner2: #ff6a00;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-    a { color: var(--accent); text-decoration: none; }
-    #login-view, #app-view { display: none; }
-    #login-view.active, #app-view.active { display: block; }
-    #login-view { min-height: 100vh; display: none; align-items: center; justify-content: center; padding: 2rem;
-      background: radial-gradient(800px 400px at 10% 0%, #fed7aa55, transparent), var(--bg); }
-    #login-view.active { display: flex; }
-    .login-card { background: #fff; border-radius: 20px; padding: 2rem; width: 100%; max-width: 400px; box-shadow: var(--shadow); border: 1px solid var(--border); }
-    .login-card h1 { font-size: 1.5rem; font-weight: 800; margin-bottom: .25rem; }
-    .login-card p { color: var(--muted); margin-bottom: 1.25rem; font-size: .9rem; }
-    .login-card label { display: block; font-size: .8rem; font-weight: 600; color: var(--muted); margin: .75rem 0 .35rem; }
-    .login-card input { width: 100%; padding: .7rem .9rem; border: 1px solid var(--border); border-radius: 12px; font: inherit; }
-    .login-card button { width: 100%; margin-top: 1.25rem; padding: .8rem; border: none; border-radius: 12px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-weight: 700; cursor: pointer; font-size: 1rem; }
-    .shell { display: flex; min-height: 100vh; }
-    .sidebar { width: 240px; background: var(--sidebar); border-right: 1px solid var(--border); padding: 1.25rem 1rem; display: flex; flex-direction: column; gap: .25rem; position: sticky; top: 0; height: 100vh; }
-    .brand { display: flex; align-items: center; gap: .6rem; font-weight: 800; font-size: 1.15rem; padding: .5rem .75rem 1.25rem; }
-    .brand-mark { width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; display: grid; place-items: center; font-weight: 900; font-size: .9rem; }
-    .nav-sec { font-size: .7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding: 1rem .75rem .35rem; }
-    .nav-item { display: flex; align-items: center; gap: .65rem; padding: .65rem .85rem; border-radius: 12px; color: var(--text); font-weight: 600; font-size: .9rem; cursor: pointer; border: none; background: transparent; width: 100%; text-align: left; }
-    .nav-item:hover { background: #fff7ed; color: var(--accent2); }
-    .nav-item.active { background: var(--accent); color: #fff; }
-    .main { flex: 1; padding: 1.25rem 1.5rem 2rem; max-width: 1200px; }
-    .topbar { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
-    .search { flex: 1; min-width: 200px; background: #fff; border: 1px solid var(--border); border-radius: 999px; padding: .65rem 1rem; display: flex; align-items: center; gap: .5rem; }
-    .search input { border: none; outline: none; flex: 1; font: inherit; background: transparent; }
-    .user-pill { display: flex; align-items: center; gap: .6rem; background: #fff; border: 1px solid var(--border); border-radius: 999px; padding: .35rem .75rem .35rem .4rem; }
-    .avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), #fb923c); color: #fff; display: grid; place-items: center; font-weight: 800; font-size: .8rem; }
-    .welcome { background: linear-gradient(135deg, #ea580c, #f97316 50%, #fb923c); border-radius: 20px; padding: 1.5rem 1.75rem; color: #fff; margin-bottom: 1.25rem; box-shadow: 0 10px 30px rgba(249,115,22,.25); }
-    .welcome h2 { font-size: 1.5rem; font-weight: 900; }
-    .welcome p { opacity: .9; font-size: .9rem; margin-top: .25rem; font-weight: 600; }
-    .quick { display: flex; gap: .75rem; margin-top: 1rem; flex-wrap: wrap; }
-    .quick button { background: rgba(255,255,255,.2); border: 1px solid rgba(255,255,255,.35); color: #fff; padding: .55rem 1rem; border-radius: 12px; font-weight: 700; cursor: pointer; }
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
-    .stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem 1.2rem; box-shadow: var(--shadow); }
-    .stat .label { font-size: .8rem; color: var(--muted); font-weight: 600; }
-    .stat .value { font-size: 1.75rem; font-weight: 900; margin-top: .35rem; }
-    .stat .trend { font-size: .75rem; font-weight: 700; margin-top: .25rem; color: var(--ok); }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
-    .card h3 { font-size: 1rem; font-weight: 800; margin-bottom: .85rem; }
-    .row { display: flex; gap: .65rem; flex-wrap: wrap; align-items: center; margin-bottom: .75rem; }
-    .row > * { flex: 1; min-width: 140px; }
-    input, select, button.btn { font: inherit; padding: .65rem .85rem; border-radius: 12px; border: 1px solid var(--border); background: #fff; }
-    button.btn { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; border: none; font-weight: 700; cursor: pointer; }
-    button.btn.secondary { background: #f1f5f9; color: var(--text); }
-    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-    th, td { text-align: left; padding: .7rem .5rem; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); font-weight: 700; font-size: .78rem; text-transform: uppercase; }
-    .badge { display: inline-block; padding: .2rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 800; }
-    .badge.ok { background: #dcfce7; color: var(--ok); }
-    .badge.bad { background: #fee2e2; color: var(--danger); }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh; line-height: 1.5; display: flex;
+    }
+    .sidebar {
+      width: 240px; background: var(--sidebar); border-right: 1px solid var(--border);
+      padding: 1.25rem 0; display: flex; flex-direction: column; flex-shrink: 0;
+      position: sticky; top: 0; height: 100vh;
+    }
+    .brand {
+      display: flex; align-items: center; gap: .65rem;
+      padding: 0 1.25rem 1.5rem; font-weight: 800; font-size: 1.15rem;
+    }
+    .brand-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--banner1), var(--banner2));
+      display: grid; place-items: center; color: #fff; font-size: 1.1rem;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: .7rem;
+      padding: .7rem 1.25rem; margin: 0 .5rem; border-radius: 10px;
+      color: var(--muted); cursor: pointer; font-weight: 500; font-size: .92rem;
+      border: none; background: none; width: calc(100% - 1rem); text-align: left;
+    }
+    .nav-item:hover { background: var(--accent-soft); color: var(--accent); }
+    .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+    .sidebar-foot { margin-top: auto; padding: 1rem 1.25rem; border-top: 1px solid var(--border); }
+    .main { flex: 1; padding: 1.5rem 2rem; overflow-x: auto; max-width: 1200px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: .75rem; }
+    .search {
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      padding: .55rem 1rem; min-width: 220px; color: var(--text); outline: none;
+    }
+    .search:focus { border-color: var(--accent); }
+    .icon-btn {
+      width: 40px; height: 40px; border-radius: 12px; border: 1px solid var(--border);
+      background: var(--card); cursor: pointer; display: grid; place-items: center;
+      font-size: 1.1rem; color: var(--text);
+    }
+    .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .welcome {
+      background: linear-gradient(105deg, var(--banner1), var(--banner2));
+      border-radius: 16px; padding: 1.35rem 1.5rem; color: #fff; margin-bottom: 1.25rem;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;
+    }
+    .welcome h1 { font-size: 1.35rem; font-weight: 800; }
+    .welcome p { opacity: .9; font-size: .9rem; margin-top: .25rem; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+    .stat {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 1.1rem; box-shadow: var(--shadow);
+    }
+    .stat .label { color: var(--muted); font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+    .stat .num { font-size: 1.75rem; font-weight: 800; margin-top: .25rem; color: var(--accent); }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 1.25rem; margin-bottom: 1rem; box-shadow: var(--shadow);
+    }
+    .card h2 { font-size: 1.05rem; font-weight: 700; margin-bottom: .85rem; }
+    input, select, button {
+      font: inherit; padding: .55rem .85rem; border-radius: 10px;
+      border: 1px solid var(--border); background: var(--input-bg); color: var(--text);
+    }
+    button {
+      background: linear-gradient(135deg, var(--banner1), var(--banner2));
+      color: #fff; border: none; cursor: pointer; font-weight: 700;
+    }
+    button:hover { filter: brightness(1.06); }
+    button.secondary { background: var(--input-bg); color: var(--text); border: 1px solid var(--border); }
+    button.danger { background: var(--danger); color: #fff; }
+    button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    button.sm { padding: .3rem .6rem; font-size: .8rem; font-weight: 600; }
+    .row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+    .row > input, .row > select { flex: 1; min-width: 120px; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    th, td { text-align: left; padding: .65rem .45rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    th { color: var(--muted); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+    .badge {
+      display: inline-block; padding: .15rem .5rem; border-radius: 999px; font-size: .72rem; font-weight: 700;
+    }
+    .badge.ok { background: var(--ok-bg); color: var(--ok); }
+    .badge.bad { background: var(--danger-bg); color: var(--danger); }
+    .badge.warn { background: var(--warn-bg); color: var(--warn); }
     .muted { color: var(--muted); font-size: .85rem; }
-    pre { background: #f8fafc; padding: .75rem; border-radius: 10px; overflow: auto; border: 1px solid var(--border); }
+    code { font-family: ui-monospace, monospace; font-size: .82rem; background: var(--accent-soft); color: var(--accent); padding: .1rem .35rem; border-radius: 4px; }
+    pre { background: var(--input-bg); padding: .75rem; border-radius: 8px; overflow-x: auto; font-size: .85rem; border: 1px solid var(--border); }
+    a { color: var(--accent); }
+    #login-view, #app-view { display: none; width: 100%; }
+    #login-view.active, #app-view.active { display: flex; }
+    #login-view.active { justify-content: center; align-items: center; min-height: 100vh; background: var(--bg); }
+    .login-card { max-width: 400px; width: 100%; }
     .panel { display: none; }
     .panel.active { display: block; }
-    @media (max-width: 800px) { .shell { flex-direction: column; } .sidebar { width: 100%; height: auto; position: relative; } }
+    .actions { display: flex; gap: .35rem; flex-wrap: wrap; }
+    .device-id { font-family: ui-monospace, monospace; font-size: .75rem; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 800px) {
+      body { flex-direction: column; }
+      .sidebar { width: 100%; height: auto; position: relative; border-right: none; border-bottom: 1px solid var(--border); }
+      .main { padding: 1rem; }
+    }
   </style>
 </head>
 <body>
-  <div id="login-view">
-    <div class="login-card">
-      <div class="brand" style="padding:0 0 1rem"><span class="brand-mark">OF</span> Order Flow</div>
-      <h1>Seller login</h1>
-      <p>Manage licenses, customers & APK releases</p>
-      <label>Email</label>
-      <input id="email" type="email" placeholder="admin@you.com" />
-      <label>Password</label>
-      <input id="password" type="password" placeholder="••••••••" />
-      <button onclick="login()">Sign in</button>
-      <p class="muted" style="margin-top:1rem">First login creates the admin account.</p>
+  <div id="login-view" class="active">
+    <div class="card login-card">
+      <div class="brand" style="padding:0 0 1rem;justify-content:center">
+        <div class="brand-icon">OF</div>
+        <span>Order Flow</span>
+      </div>
+      <h2 style="text-align:center;margin-bottom:.5rem">Seller login</h2>
+      <p class="muted" style="text-align:center;margin-bottom:1.25rem">Manage customers, licenses &amp; APK releases</p>
+      <div class="row" style="flex-direction:column">
+        <input type="email" id="email" placeholder="Email" value="admin@example.com" />
+        <input type="password" id="password" placeholder="Password" />
+        <button onclick="login()" style="width:100%">Login</button>
+      </div>
+      <p class="muted" style="margin-top:1rem;text-align:center">First login with bootstrap email creates the admin account.</p>
+      <div style="text-align:center;margin-top:1rem">
+        <button class="ghost sm" type="button" onclick="toggleTheme()">Theme</button>
+      </div>
     </div>
   </div>
+
   <div id="app-view">
-    <div class="shell">
-      <aside class="sidebar">
-        <div class="brand"><span class="brand-mark">OF</span> Order Flow</div>
-        <div class="nav-sec">Main</div>
-        <button class="nav-item active" data-panel="dash" onclick="showPanel('dash', this)">Dashboard</button>
-        <div class="nav-sec">Customers</div>
-        <button class="nav-item" data-panel="customers" onclick="showPanel('customers', this)">Customers</button>
-        <button class="nav-item" data-panel="licenses" onclick="showPanel('licenses', this)">Licenses</button>
-        <div class="nav-sec">Product</div>
-        <button class="nav-item" data-panel="releases" onclick="showPanel('releases', this)">APK Releases</button>
-        <div style="flex:1"></div>
-        <button class="nav-item" onclick="logout()">Log Out</button>
-      </aside>
-      <main class="main">
-        <div class="topbar">
-          <div class="search">Search <input id="global-search" placeholder="Search customers, licenses..." oninput="filterTables()" /></div>
-          <div class="user-pill">
-            <span class="avatar" id="av">A</span>
-            <div>
-              <div style="font-weight:800;font-size:.85rem" id="admin-name">Admin</div>
-              <div class="muted" style="font-size:.7rem">Premium seller</div>
-            </div>
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-icon">OF</div> Order Flow</div>
+      <button class="nav-item active" data-panel="overview" onclick="showPanel('overview')">Overview</button>
+      <button class="nav-item" data-panel="customers" onclick="showPanel('customers')">Customers</button>
+      <button class="nav-item" data-panel="licenses" onclick="showPanel('licenses')">Licenses</button>
+      <button class="nav-item" data-panel="activity" onclick="showPanel('activity')">Activity</button>
+      <button class="nav-item" data-panel="releases" onclick="showPanel('releases')">Releases</button>
+      <div class="sidebar-foot">
+        <button class="nav-item" onclick="toggleTheme()" style="margin-bottom:.35rem">Light / Dark</button>
+        <button class="nav-item" onclick="logout()">Logout</button>
+      </div>
+    </aside>
+
+    <div class="main">
+      <div class="topbar">
+        <input class="search" id="search" placeholder="Search customers or keys…" oninput="filterTables()" />
+        <div class="row">
+          <button class="icon-btn" title="Theme" onclick="toggleTheme()">◐</button>
+          <button class="icon-btn" title="Refresh" onclick="refresh()">↻</button>
+        </div>
+      </div>
+
+      <div class="welcome">
+        <div>
+          <h1>Welcome back</h1>
+          <p>One license = one Main device. Reset binding when the restaurant changes phones.</p>
+        </div>
+        <a href="/api/v1/download/android" style="background:#fff;color:#ff6a00;padding:.65rem 1.1rem;border-radius:10px;font-weight:700;text-decoration:none">Download APK</a>
+      </div>
+
+      <div class="stats" id="stats"></div>
+
+      <div id="panel-overview" class="panel active">
+        <div class="card">
+          <h2>How licensing works</h2>
+          <p class="muted" style="margin-bottom:.75rem">
+            Each license key binds to the <strong>first Main device</strong> that activates it.
+            Other devices cannot use the same key until you click <strong>Reset device</strong>.
+            Order-taker / kitchen / cashier phones join the Main device on the local network — they do not need their own license.
+          </p>
+          <p class="muted">Customer app downloads never need GitHub — use the orange Download APK button.</p>
+        </div>
+        <div class="card">
+          <h2>Recent licenses</h2>
+          <div id="overview-licenses"></div>
+        </div>
+      </div>
+
+      <div id="panel-customers" class="panel">
+        <div class="card">
+          <h2>Add customer</h2>
+          <div class="row" style="margin-bottom:.5rem">
+            <input id="cust-name" placeholder="Restaurant name" />
+            <input id="cust-email" placeholder="Contact email" type="email" />
+            <button onclick="createCustomer()">Add</button>
           </div>
         </div>
-        <div id="panel-dash" class="panel active">
-          <div class="welcome">
-            <h2 id="welcome-title">WELCOME BACK</h2>
-            <p>YOUR LICENSE BUSINESS AT A GLANCE</p>
-            <div class="quick">
-              <button onclick="showPanel('customers', document.querySelector('[data-panel=customers]'))">+ Add customer</button>
-              <button onclick="showPanel('licenses', document.querySelector('[data-panel=licenses]'))">Create license</button>
-              <button onclick="showPanel('releases', document.querySelector('[data-panel=releases]'))">APK releases</button>
-            </div>
-          </div>
-          <div class="stats">
-            <div class="stat"><div class="label">Customers</div><div class="value" id="s-cust">0</div><div class="trend">From app signups & manual</div></div>
-            <div class="stat"><div class="label">Active licenses</div><div class="value" id="s-lic">0</div><div class="trend">Not expired</div></div>
-            <div class="stat"><div class="label">Validations today</div><div class="value" id="s-val">0</div><div class="trend">Device checks</div></div>
-            <div class="stat"><div class="label">With email</div><div class="value" id="s-email">0</div><div class="trend" style="color:var(--muted)">App signups</div></div>
-          </div>
-          <div class="card">
-            <h3>Recent customers</h3>
-            <div id="dash-customers" class="muted">Loading…</div>
-          </div>
+        <div class="card">
+          <h2>All customers</h2>
+          <div id="customers-list"></div>
         </div>
-        <div id="panel-customers" class="panel">
-          <div class="card">
-            <h3>Add customer</h3>
-            <div class="row">
-              <input id="cust-name" placeholder="Restaurant / name" />
-              <input id="cust-email" type="email" placeholder="Email" />
-              <input id="cust-phone" placeholder="Phone (optional)" />
-              <button class="btn" onclick="createCustomer()">Add</button>
-            </div>
-            <p class="muted">App signups appear here with the email the user entered on the license screen.</p>
+      </div>
+
+      <div id="panel-licenses" class="panel">
+        <div class="card">
+          <h2>Generate license</h2>
+          <div class="row">
+            <select id="lic-customer"></select>
+            <input type="date" id="lic-expires" />
+            <label class="muted" style="display:flex;align-items:center;gap:.4rem;white-space:nowrap">
+              <input type="checkbox" id="lic-trial" /> Trial (7 days)
+            </label>
+            <button onclick="createLicense()">Generate key</button>
           </div>
-          <div class="card">
-            <h3>All customers</h3>
-            <div id="customers-list"></div>
-          </div>
+          <div id="new-license" style="margin-top:1rem"></div>
         </div>
-        <div id="panel-licenses" class="panel">
-          <div class="card">
-            <h3>Create license</h3>
-            <div class="row">
-              <select id="lic-customer"></select>
-              <input id="lic-expires" type="date" />
-              <input id="lic-maxdev" type="number" value="20" placeholder="Max devices" />
-              <button class="btn" onclick="createLicense()">Generate key</button>
-            </div>
-            <div id="new-license"></div>
-          </div>
-          <div class="card">
-            <h3>Licenses</h3>
-            <div id="licenses-list"></div>
-          </div>
+        <div class="card">
+          <h2>All licenses</h2>
+          <p class="muted" style="margin-bottom:.75rem">Reset device · Extend +30 days · WhatsApp key · Delete. One key binds to one Main device.</p>
+          <div id="licenses-list"></div>
         </div>
-        <div id="panel-releases" class="panel">
-          <div class="card">
-            <h3>Latest GitHub release (APK)</h3>
-            <div id="releases" class="muted">Loading…</div>
-            <p class="muted" style="margin-top:.75rem">Public download: <a href="/api/v1/download/android" target="_blank">/api/v1/download/android</a></p>
-          </div>
+      </div>
+
+      <div id="panel-activity" class="panel">
+        <div class="card">
+          <h2>Recent validation activity</h2>
+          <p class="muted" style="margin-bottom:.75rem">Successful activations, rejected attempts, device resets, and expiry extensions.</p>
+          <div id="activity-list"></div>
         </div>
-      </main>
+      </div>
+
+      <div id="panel-releases" class="panel">
+        <div class="card">
+          <h2>Latest APK / GitHub release</h2>
+          <div id="releases">Loading…</div>
+          <p class="muted" style="margin-top:1rem"><strong>PC as Main:</strong> customer runs Main app, then opens <code>http://MAIN-IP:8787/</code> in a browser.</p>
+        </div>
+      </div>
     </div>
   </div>
+
   <script>
-    const API = '';
-    let token = localStorage.getItem('of_token') || '';
-    let admin = JSON.parse(localStorage.getItem('of_admin') || 'null');
-    let lastCustomers = [];
-    function show(which) {
-      document.getElementById('login-view').classList.toggle('active', which === 'login');
-      document.getElementById('app-view').classList.toggle('active', which === 'app');
+    const API = window.location.origin;
+    let token = localStorage.getItem('of_token');
+    let allCustomers = [];
+    let allLicenses = [];
+
+    function headers() {
+      return {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: 'Bearer ' + token } : {}),
+      };
     }
-    function showPanel(id, btn) {
-      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-      document.getElementById('panel-' + id).classList.add('active');
-      document.querySelectorAll('.nav-item[data-panel]').forEach(n => n.classList.remove('active'));
-      if (btn) btn.classList.add('active');
-      else { const b = document.querySelector('.nav-item[data-panel="' + id + '"]'); if (b) b.classList.add('active'); }
-    }
+
     async function api(path, opts = {}) {
-      const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
-      if (token) headers.Authorization = 'Bearer ' + token;
-      const res = await fetch(API + path, { ...opts, headers });
+      const res = await fetch(API + path, { ...opts, headers: { ...headers(), ...opts.headers } });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || res.statusText);
       return data;
     }
+
+    function show(view) {
+      document.getElementById('login-view').classList.toggle('active', view === 'login');
+      document.getElementById('app-view').classList.toggle('active', view === 'app');
+    }
+
+    function showPanel(name) {
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-item[data-panel]').forEach(n => n.classList.remove('active'));
+      const panel = document.getElementById('panel-' + name);
+      if (panel) panel.classList.add('active');
+      const nav = document.querySelector('.nav-item[data-panel="' + name + '"]');
+      if (nav) nav.classList.add('active');
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('of_theme', next);
+    }
+    (function initTheme() {
+      const t = localStorage.getItem('of_theme') || 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+
     async function login() {
       try {
-        const email = document.getElementById('email').value.trim();
+        const email = document.getElementById('email').value;
         const password = document.getElementById('password').value;
-        const data = await api('/api/v1/admin/login', { method: 'POST', body: JSON.stringify({ email, password }) });
-        token = data.token; admin = data.admin;
+        const data = await api('/api/v1/admin/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, password }),
+        });
+        token = data.token;
         localStorage.setItem('of_token', token);
-        localStorage.setItem('of_admin', JSON.stringify(admin));
-        paintAdmin(); show('app'); await refresh();
-      } catch (e) { alert(e.message); }
+        show('app');
+        await refresh();
+      } catch (e) {
+        alert(e.message);
+      }
     }
-    function logout() { token = ''; localStorage.removeItem('of_token'); localStorage.removeItem('of_admin'); show('login'); }
-    function paintAdmin() {
-      if (!admin) return;
-      document.getElementById('admin-name').textContent = admin.name || admin.email || 'Admin';
-      document.getElementById('av').textContent = (admin.name || admin.email || 'A').slice(0, 1).toUpperCase();
-      document.getElementById('welcome-title').textContent = 'WELCOME BACK, ' + (admin.name || 'ADMIN').toUpperCase();
+
+    function logout() {
+      token = null;
+      localStorage.removeItem('of_token');
+      show('login');
     }
+
+    function shortDev(id) {
+      if (!id) return '—';
+      return id.length > 12 ? id.slice(0, 8) + '…' : id;
+    }
+
+    function esc(s) {
+      return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderCustomers() {
+      const q = (document.getElementById('search').value || '').toLowerCase();
+      let html = '<table><tr><th>Name</th><th>Email</th><th>Licenses</th><th>Created</th><th></th></tr>';
+      const sel = document.getElementById('lic-customer');
+      sel.innerHTML = '';
+      for (const c of allCustomers) {
+        const hay = ((c.name || '') + ' ' + (c.contact_email || '')).toLowerCase();
+        if (q && !hay.includes(q)) continue;
+        html += '<tr>' +
+          '<td><strong>' + esc(c.name) + '</strong></td>' +
+          '<td>' + esc(c.contact_email || '—') + '</td>' +
+          '<td>' + (c.active_licenses || 0) + '</td>' +
+          '<td class="muted">' + (c.created_at || '').slice(0, 10) + '</td>' +
+          '<td class="actions"><button class="danger sm" onclick="deleteCustomer(\'' + c.id + '\')">Delete</button></td>' +
+          '</tr>';
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.name;
+        sel.appendChild(opt);
+      }
+      html += '</table>';
+      document.getElementById('customers-list').innerHTML =
+        allCustomers.length ? html : '<p class="muted">No customers yet</p>';
+    }
+
+    function renderLicenses() {
+      const q = (document.getElementById('search').value || '').toLowerCase();
+      let licHtml = '<table><tr><th>Key</th><th>Customer</th><th>Expires</th><th>Device</th><th>Status</th><th>Uses</th><th></th></tr>';
+      let overviewHtml = '<table><tr><th>Key</th><th>Customer</th><th>Device</th><th>Status</th></tr>';
+      let count = 0;
+      for (const l of allLicenses) {
+        const hay = ((l.license_key || '') + ' ' + (l.customer_name || '')).toLowerCase();
+        if (q && !hay.includes(q)) continue;
+        const active = l.is_active && new Date(l.expires_at) > new Date();
+        const bound = !!l.bound_device_id;
+        let statusBadge = !l.is_active
+          ? '<span class="badge bad">Revoked</span>'
+          : !active
+            ? '<span class="badge bad">Expired</span>'
+            : bound
+              ? '<span class="badge ok">Bound</span>'
+              : '<span class="badge warn">Unbound</span>';
+        const deviceCell = bound
+          ? '<span class="device-id" title="' + esc(l.bound_device_id) + '">' + shortDev(l.bound_device_id) + '</span>'
+          : '<span class="muted">Not activated</span>';
+        const trialBadge = l.is_trial ? ' <span class="badge warn">Trial</span>' : '';
+        licHtml += '<tr>' +
+          '<td><code>' + esc(l.license_key) + '</code>' + trialBadge + '</td>' +
+          '<td>' + esc(l.customer_name) + '</td>' +
+          '<td>' + (l.expires_at || '').slice(0, 10) + '</td>' +
+          '<td>' + deviceCell + '</td>' +
+          '<td>' + statusBadge + '</td>' +
+          '<td>' + (l.validation_count || 0) + '</td>' +
+          '<td class="actions">' +
+            (bound ? '<button class="secondary sm" onclick="resetDevice(\'' + l.id + '\')">Reset device</button> ' : '') +
+            '<button class="secondary sm" onclick="extendLicense(\'' + l.id + '\')">+30 days</button> ' +
+            '<button class="secondary sm" onclick="whatsappKey(\'' + esc(l.license_key) + '\',\'' + esc(l.customer_name) + '\')">WhatsApp</button> ' +
+            '<button class="secondary sm" onclick="toggleLicense(\'' + l.id + '\', ' + (l.is_active ? 0 : 1) + ')">' + (l.is_active ? 'Revoke' : 'Activate') + '</button> ' +
+            '<button class="danger sm" onclick="deleteLicense(\'' + l.id + '\')">Delete</button>' +
+          '</td></tr>';
+        if (count < 8) {
+          overviewHtml += '<tr><td><code>' + esc(l.license_key) + '</code></td><td>' + esc(l.customer_name) + '</td><td>' + deviceCell + '</td><td>' + statusBadge + '</td></tr>';
+          count++;
+        }
+      }
+      licHtml += '</table>';
+      overviewHtml += '</table>';
+      document.getElementById('licenses-list').innerHTML =
+        allLicenses.length ? licHtml : '<p class="muted">No licenses yet</p>';
+      document.getElementById('overview-licenses').innerHTML =
+        allLicenses.length ? overviewHtml : '<p class="muted">No licenses yet</p>';
+    }
+
     function filterTables() {
-      const q = (document.getElementById('global-search').value || '').toLowerCase();
-      document.querySelectorAll('table tbody tr').forEach(tr => {
-        tr.style.display = !q || tr.textContent.toLowerCase().includes(q) ? '' : 'none';
-      });
+      renderCustomers();
+      renderLicenses();
     }
+
     async function refresh() {
       try {
         const [stats, customers, licenses, releases] = await Promise.all([
-          api('/api/v1/stats'), api('/api/v1/customers'), api('/api/v1/licenses'), api('/api/v1/releases/latest'),
+          api('/api/v1/stats'),
+          api('/api/v1/customers'),
+          api('/api/v1/licenses'),
+          api('/api/v1/releases/latest'),
         ]);
-        lastCustomers = customers.customers || [];
-        const withEmail = lastCustomers.filter(c => c.contact_email).length;
-        document.getElementById('s-cust').textContent = stats.totalCustomers ?? lastCustomers.length;
-        document.getElementById('s-lic').textContent = stats.activeLicenses ?? 0;
-        document.getElementById('s-val').textContent = stats.validationsToday ?? 0;
-        document.getElementById('s-email').textContent = withEmail;
-        let custHtml = '<table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Notes</th><th>Licenses</th></tr></thead><tbody>';
-        for (const c of lastCustomers) {
-          custHtml += '<tr><td><strong>' + (c.name || '—') + '</strong></td><td>' + (c.contact_email || '<span class="muted">—</span>') + '</td><td>' + (c.contact_phone || '—') + '</td><td class="muted">' + (c.notes || '') + '</td><td>' + (c.active_licenses ?? 0) + '</td></tr>';
+
+        document.getElementById('stats').innerHTML =
+          '<div class="stat"><div class="label">Customers</div><div class="num">' + stats.totalCustomers + '</div></div>' +
+          '<div class="stat"><div class="label">Active licenses</div><div class="num">' + stats.activeLicenses + '</div></div>' +
+          '<div class="stat"><div class="label">Bound devices</div><div class="num">' + (stats.boundLicenses != null ? stats.boundLicenses : '—') + '</div></div>' +
+          '<div class="stat"><div class="label">Expiring ≤7 days</div><div class="num">' + (stats.expiringSoon != null ? stats.expiringSoon : '—') + '</div></div>' +
+          '<div class="stat"><div class="label">Validations today</div><div class="num">' + stats.validationsToday + '</div></div>';
+
+        allCustomers = customers.customers || [];
+        allLicenses = licenses.licenses || [];
+        renderCustomers();
+        renderLicenses();
+
+        try {
+          const logsData = await api('/api/v1/validation-logs?limit=40');
+          const logs = logsData.logs || [];
+          let logHtml = '<table><tr><th>When</th><th>Customer</th><th>Key</th><th>Result</th><th>Message</th><th>Device</th></tr>';
+          for (const v of logs) {
+            logHtml += '<tr>' +
+              '<td class="muted">' + esc((v.created_at || '').replace('T', ' ').slice(0, 19)) + '</td>' +
+              '<td>' + esc(v.customer_name || '—') + '</td>' +
+              '<td><code>' + esc(v.license_key || v.license_id || '—') + '</code></td>' +
+              '<td>' + (v.success ? '<span class="badge ok">OK</span>' : '<span class="badge bad">Fail</span>') + '</td>' +
+              '<td class="muted">' + esc(v.message || '') + '</td>' +
+              '<td class="device-id">' + shortDev(v.device_id) + '</td>' +
+              '</tr>';
+          }
+          logHtml += '</table>';
+          document.getElementById('activity-list').innerHTML = logs.length ? logHtml : '<p class="muted">No activity yet</p>';
+        } catch (e) {
+          document.getElementById('activity-list').innerHTML = '<p class="muted">Could not load activity</p>';
         }
-        custHtml += '</tbody></table>';
-        document.getElementById('customers-list').innerHTML = lastCustomers.length ? custHtml : '<p class="muted">No customers yet. App signups will list email here.</p>';
-        document.getElementById('dash-customers').innerHTML = lastCustomers.slice(0, 5).map(c =>
-          '<div style="padding:.5rem 0;border-bottom:1px solid var(--border)"><strong>' + c.name + '</strong> · ' + (c.contact_email || 'no email') + ' <span class="muted">' + (c.notes || '') + '</span></div>'
-        ).join('') || '<span class="muted">No customers yet</span>';
-        const sel = document.getElementById('lic-customer');
-        sel.innerHTML = lastCustomers.map(c => '<option value="' + c.id + '">' + c.name + (c.contact_email ? ' (' + c.contact_email + ')' : '') + '</option>').join('');
-        const lic = licenses.licenses || [];
-        let licHtml = '<table><thead><tr><th>Key</th><th>Customer</th><th>Expires</th><th>Status</th><th></th></tr></thead><tbody>';
-        for (const l of lic) {
-          licHtml += '<tr><td><code>' + l.license_key + '</code></td><td>' + (l.customer_name || '') + '</td><td>' + (l.expires_at || '').slice(0, 10) + '</td>' +
-            '<td><span class="badge ' + (l.is_active ? 'ok' : 'bad') + '">' + (l.is_active ? 'Active' : 'Inactive') + '</span></td>' +
-            '<td><button class="btn secondary" style="padding:.3rem .6rem" onclick="toggleLicense(\'' + l.id + '\', ' + (l.is_active ? 0 : 1) + ')">' + (l.is_active ? 'Revoke' : 'Activate') + '</button></td></tr>';
-        }
-        document.getElementById('licenses-list').innerHTML = lic.length ? licHtml + '</tbody></table>' : '<p class="muted">No licenses yet</p>';
+
         if (releases.tag) {
-          const assets = (releases.assets || []).map(a => '<li><a href="' + a.downloadUrl + '" target="_blank">' + a.name + '</a></li>').join('');
-          document.getElementById('releases').innerHTML = '<p><strong>' + (releases.name || releases.tag) + '</strong></p><ul>' + (assets || '<li class="muted">No assets yet</li>') + '</ul>';
+          let assets = (releases.assets || []).map(function (a) {
+            return '<li><a href="' + a.downloadUrl + '" target="_blank">' + esc(a.name) + '</a> (' + (a.size / 1024 / 1024).toFixed(1) + ' MB)</li>';
+          }).join('');
+          document.getElementById('releases').innerHTML =
+            '<p><strong>' + esc(releases.name || releases.tag) + '</strong> – published ' + (releases.publishedAt || '').slice(0, 10) + '</p>' +
+            '<ul style="margin:.75rem 0 0 1.2rem">' + (assets || '<li class="muted">No assets yet</li>') + '</ul>';
         } else {
-          document.getElementById('releases').innerHTML = '<p class="muted">No GitHub releases found yet. Create a release with the APK.</p>';
+          document.getElementById('releases').innerHTML = '<p class="muted">No GitHub releases found. Set GITHUB_REPO and create a release with the APK.</p>';
         }
       } catch (e) {
-        if (String(e.message).includes('Unauthorized')) logout();
+        if ((e.message || '').indexOf('Unauthorized') >= 0) logout();
         else console.error(e);
       }
     }
+
     async function createCustomer() {
       const name = document.getElementById('cust-name').value.trim();
       if (!name) return alert('Name required');
-      await api('/api/v1/customers', { method: 'POST', body: JSON.stringify({ name, contact_email: document.getElementById('cust-email').value.trim() || null, contact_phone: document.getElementById('cust-phone').value.trim() || null }) });
-      document.getElementById('cust-name').value = ''; document.getElementById('cust-email').value = ''; document.getElementById('cust-phone').value = '';
+      await api('/api/v1/customers', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: name,
+          contact_email: document.getElementById('cust-email').value.trim() || null,
+        }),
+      });
+      document.getElementById('cust-name').value = '';
+      document.getElementById('cust-email').value = '';
       await refresh();
     }
+
+    async function deleteCustomer(id) {
+      if (!confirm('Delete this customer and ALL their licenses? This cannot be undone.')) return;
+      try {
+        await api('/api/v1/customers/' + id, { method: 'DELETE' });
+        await refresh();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
     async function createLicense() {
       const customerId = document.getElementById('lic-customer').value;
       const expires = document.getElementById('lic-expires').value;
-      const maxDevices = parseInt(document.getElementById('lic-maxdev').value) || 20;
-      if (!customerId || !expires) return alert('Select customer and expiry');
-      const data = await api('/api/v1/licenses', { method: 'POST', body: JSON.stringify({ customerId, expiresAt: expires + 'T23:59:59Z', maxDevices }) });
-      document.getElementById('new-license').innerHTML = '<p>New license key:</p><pre>' + data.licenseKey + '</pre><p class="muted">Give this key to the restaurant.</p>';
+      const isTrial = document.getElementById('lic-trial').checked;
+      if (!customerId) return alert('Select customer');
+      if (!isTrial && !expires) return alert('Select expiry date or check Trial');
+      const body = { customerId: customerId, maxDevices: 1, isTrial: isTrial };
+      if (isTrial) body.trialDays = 7;
+      else body.expiresAt = expires + 'T23:59:59Z';
+      const data = await api('/api/v1/licenses', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      document.getElementById('new-license').innerHTML =
+        '<p>New license key' + (isTrial ? ' (trial)' : '') + ':</p>' +
+        '<pre>' + esc(data.licenseKey) + '</pre>' +
+        '<div class="row" style="margin-top:.5rem">' +
+          '<button class="secondary sm" onclick="whatsappKey(\'' + esc(data.licenseKey) + '\',\'\')">Send via WhatsApp</button>' +
+          '<button class="secondary sm" onclick="navigator.clipboard.writeText(\'' + esc(data.licenseKey) + '\')">Copy key</button>' +
+        '</div>' +
+        '<p class="muted" style="margin-top:.5rem">Binds to the first Main device. Use Reset device if they change phones.</p>';
+      document.getElementById('lic-trial').checked = false;
       await refresh();
     }
+
+    async function extendLicense(id) {
+      if (!confirm('Extend this license by 30 days from current expiry (or from today if already expired)?')) return;
+      try {
+        const data = await api('/api/v1/licenses/' + id + '/extend', {
+          method: 'PUT',
+          body: JSON.stringify({ days: 30 }),
+        });
+        alert('Extended until ' + (data.expiresAt || '').slice(0, 10));
+        await refresh();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    function whatsappKey(key, customerName) {
+      const text = encodeURIComponent(
+        'Hello' + (customerName ? ' ' + customerName : '') + ',\n\n' +
+        'Your Order Flow license key:\n' + key + '\n\n' +
+        '1. Install the app\n' +
+        '2. Open as Main device\n' +
+        '3. Enter this key once\n\n' +
+        'The key works on one Main device only. Contact us if you change phones.'
+      );
+      window.open('https://wa.me/?text=' + text, '_blank');
+    }
+
     async function toggleLicense(id, isActive) {
-      await api('/api/v1/licenses/' + id, { method: 'PUT', body: JSON.stringify({ is_active: !!isActive }) });
+      await api('/api/v1/licenses/' + id, {
+        method: 'PUT',
+        body: JSON.stringify({ is_active: !!isActive }),
+      });
       await refresh();
     }
-    if (token) { paintAdmin(); show('app'); refresh(); } else show('login');
-    const d = new Date(); d.setDate(d.getDate() + 30);
+
+    async function resetDevice(id) {
+      if (!confirm('Reset device binding? The restaurant can then activate this key on a new Main device.')) return;
+      try {
+        await api('/api/v1/licenses/' + id + '/reset-device', { method: 'PUT', body: '{}' });
+        alert('Device binding cleared.');
+        await refresh();
+      } catch (e) {
+        try {
+          await api('/api/v1/licenses/' + id, {
+            method: 'PUT',
+            body: JSON.stringify({ reset_device: true }),
+          });
+          alert('Device binding cleared.');
+          await refresh();
+        } catch (e2) {
+          alert(e2.message || e.message);
+        }
+      }
+    }
+
+    async function deleteLicense(id) {
+      if (!confirm('Permanently delete this license key?')) return;
+      try {
+        await api('/api/v1/licenses/' + id, { method: 'DELETE' });
+        await refresh();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+
+    if (token) {
+      show('app');
+      refresh();
+    } else {
+      show('login');
+    }
+
+    var d = new Date();
+    d.setDate(d.getDate() + 30);
     document.getElementById('lic-expires').value = d.toISOString().slice(0, 10);
   </script>
 </body>

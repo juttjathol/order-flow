@@ -23,7 +23,7 @@ class DiscoveredServer {
   String toString() => '$name @ $host:$port';
 }
 
-/// mDNS discovery for Order Flow Main devices.
+/// mDNS discovery for OrderFlow Main devices.
 /// Service type: _orderflow._tcp
 class ServerDiscovery {
   static const serviceType = '_orderflow._tcp';

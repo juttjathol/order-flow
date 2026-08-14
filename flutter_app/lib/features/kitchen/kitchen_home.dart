@@ -75,7 +75,7 @@ class KitchenHome extends ConsumerWidget {
                           (it) => Padding(
                             padding: const EdgeInsets.symmetric(vertical: 3),
                             child: Text(
-                              '${it.quantity}\u00d7 ${it.nameSnapshot}',
+                              '${it.quantity}× ${it.nameSnapshot}',
                               style: const TextStyle(fontSize: 16),
                             ),
                           ),

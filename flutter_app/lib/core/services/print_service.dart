@@ -8,6 +8,7 @@ import '../models/models.dart';
 
 final _log = Logger();
 
+/// Restaurant bill / receipt profile printed on customer tickets.
 class BillProfile {
   final String restaurantName;
   final String address;
@@ -129,6 +130,7 @@ class PrintService {
     return buffer.toBytes();
   }
 
+  /// Plain-text bill for on-screen preview.
   static String buildBillPreview({
     required Order order,
     required BillProfile bill,
