@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Optional existing tag to attach APK (e.g. v1.1.2). Leave empty for artifact only.'
+        description: 'Optional existing tag to attach APK (e.g. v1.6.1). Leave empty for artifact only.'
         required: false
         default: ''
 
@@ -40,10 +40,18 @@ jobs:
         run: |
           if [ ! -d android ]; then
             echo "android/ missing — generating platform folders"
-            flutter create . --project-name order_flow --platforms=android
+            flutter create . --project-name order_flow --org com.orderflow --platforms=android
           fi
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
             sed -i 's/<application /<application android:usesCleartextTraffic="true" /' android/app/src/main/AndroidManifest.xml || true
+          fi
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/minSdkVersion .*/minSdkVersion 23/' android/app/build.gradle || true
+            sed -i 's/minSdk .*/minSdk 23/' android/app/build.gradle || true
+          fi
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/minSdk = .*/minSdk = 23/' android/app/build.gradle.kts || true
+            sed -i 's/minSdkVersion = .*/minSdkVersion = 23/' android/app/build.gradle.kts || true
           fi
 
       - name: Gradle memory settings
@@ -62,16 +70,16 @@ jobs:
         working-directory: flutter_app
         run: flutter pub get
 
-      - name: Code generation
+      - name: Code generation (optional)
         working-directory: flutter_app
         run: |
           if grep -q "build_runner" pubspec.yaml; then
             dart run build_runner build --delete-conflicting-outputs || true
           fi
 
-      - name: Analyze (fail on errors)
+      - name: Analyze (non-blocking)
         working-directory: flutter_app
-        run: dart analyze --fatal-infos || dart analyze lib || true
+        run: dart analyze lib || true
 
       - name: Build release APK
         working-directory: flutter_app

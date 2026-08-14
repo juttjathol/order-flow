@@ -1,5 +1,58 @@
 import 'package:flutter/material.dart';
 
+/// Fade + slight slide-up entrance. Used across role screens and lists.
+class FadeSlideIn extends StatefulWidget {
+  final Widget child;
+  final int index;
+  final Duration duration;
+
+  const FadeSlideIn({
+    super.key,
+    required this.child,
+    this.index = 0,
+    this.duration = const Duration(milliseconds: 320),
+  });
+
+  @override
+  State<FadeSlideIn> createState() => _FadeSlideInState();
+}
+
+class _FadeSlideInState extends State<FadeSlideIn>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+  );
+  late final Animation<double> _fade =
+      CurvedAnimation(parent: _c, curve: Curves.easeOut);
+  late final Animation<Offset> _slide = Tween(
+    begin: const Offset(0, 0.06),
+    end: Offset.zero,
+  ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(Duration(milliseconds: 40 * widget.index), () {
+      if (mounted) _c.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(position: _slide, child: widget.child),
+    );
+  }
+}
+
 /// Simple fade+scale entrance for cards and lists.
 class FadeScaleIn extends StatefulWidget {
   final Widget child;
