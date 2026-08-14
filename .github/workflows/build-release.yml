@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Optional existing tag to attach APK (e.g. v1.6.2). Leave empty for artifact only.'
+        description: 'Optional existing tag to attach APK (e.g. v1.6.4). Leave empty for artifact only.'
         required: false
         default: ''
 
@@ -46,12 +46,12 @@ jobs:
             sed -i 's/<application /<application android:usesCleartextTraffic="true" /' android/app/src/main/AndroidManifest.xml || true
           fi
           if [ -f android/app/build.gradle ]; then
-            sed -i 's/minSdkVersion .*/minSdkVersion 23/' android/app/build.gradle || true
-            sed -i 's/minSdk .*/minSdk 23/' android/app/build.gradle || true
+            sed -i -E 's/minSdk(Version)?[[:space:]]*=?[[:space:]]*[0-9]+/minSdkVersion 23/' android/app/build.gradle || true
+            sed -i -E 's/compileSdk(Version)?[[:space:]]*=?[[:space:]]*[0-9]+/compileSdkVersion 34/' android/app/build.gradle || true
           fi
           if [ -f android/app/build.gradle.kts ]; then
             sed -i 's/minSdk = .*/minSdk = 23/' android/app/build.gradle.kts || true
-            sed -i 's/minSdkVersion = .*/minSdkVersion = 23/' android/app/build.gradle.kts || true
+            sed -i 's/compileSdk = .*/compileSdk = 34/' android/app/build.gradle.kts || true
           fi
 
       - name: Gradle memory settings
@@ -70,7 +70,7 @@ jobs:
         working-directory: flutter_app
         run: flutter pub get
 
-      - name: Patch plugin Android namespaces (AGP 8+)
+      - name: Patch plugin Android namespaces & compileSdk
         working-directory: flutter_app
         run: |
           for f in $(find "$HOME/.pub-cache/hosted/pub.dev" -path "*/android/build.gradle" 2>/dev/null); do
@@ -80,13 +80,13 @@ jobs:
               if [ -f "$MANIFEST" ]; then
                 PKG=$(grep -oP 'package="\K[^"]+' "$MANIFEST" | head -1 || true)
               fi
-              if [ -z "$PKG" ] && echo "$f" | grep -q blue_thermal_printer; then
-                PKG="id.kakzaki.blue_thermal_printer"
-              fi
               if [ -n "$PKG" ]; then
                 sed -i "/android {/a\\    namespace \"$PKG\"" "$f" || true
                 echo "Patched namespace $PKG -> $f"
               fi
+            fi
+            if grep -qE 'compileSdk(Version)?[[:space:]]+[0-9]+' "$f" 2>/dev/null; then
+              sed -i -E 's/compileSdk(Version)?[[:space:]]+[0-9]+/compileSdkVersion 34/' "$f" || true
             fi
           done
 

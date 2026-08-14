@@ -1,7 +1,7 @@
 name: order_flow
 description: Order Flow – Offline-first multi-device order taking for restaurants
 publish_to: 'none'
-version: 1.6.3+12
+version: 1.6.4+13
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -33,8 +33,6 @@ dependencies:
   uuid: ^4.4.0
   collection: ^1.18.0
   equatable: ^2.0.5
-
-  blue_thermal_printer: ^1.2.3
 
   flutter_secure_storage: ^9.2.2
   shared_preferences: ^2.3.1
