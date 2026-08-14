@@ -160,3 +160,69 @@ class StatCard extends StatelessWidget {
     );
   }
 }
+
+/// Pulsing status indicator (server online/offline).
+class PulseDot extends StatefulWidget {
+  final Color color;
+  final double size;
+  const PulseDot({super.key, this.color = Colors.green, this.size = 10});
+
+  @override
+  State<PulseDot> createState() => _PulseDotState();
+}
+
+class _PulseDotState extends State<PulseDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat(reverse: true);
+  late final Animation<double> _a =
+      Tween(begin: 0.35, end: 1.0).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _a,
+      child: Container(
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
+      ),
+    );
+  }
+}
+
+/// Scale-down on press for menu tiles / buttons.
+class ScaleTap extends StatefulWidget {
+  final Widget child;
+  final VoidCallback? onTap;
+  const ScaleTap({super.key, required this.child, this.onTap});
+
+  @override
+  State<ScaleTap> createState() => _ScaleTapState();
+}
+
+class _ScaleTapState extends State<ScaleTap> {
+  double _scale = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _scale = 0.96),
+      onTapUp: (_) => setState(() => _scale = 1),
+      onTapCancel: () => setState(() => _scale = 1),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _scale,
+        duration: const Duration(milliseconds: 90),
+        child: widget.child,
+      ),
+    );
+  }
+}
