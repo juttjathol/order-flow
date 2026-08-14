@@ -22,4 +22,16 @@ class S {
   String get licenseKey => isUrdu ? 'لائسنس کلید' : 'License key';
   String get activate => isUrdu ? 'فعال کریں' : 'Activate';
   String get contactWhatsApp => isUrdu ? 'واٹس ایپ پر رابطہ' : 'Contact on WhatsApp';
+  String get whatsAppSub => isUrdu ? 'کلید حاصل کرنے کے لیے میسج کریں' : 'Message us to get a key';
+  String get chooseRole => isUrdu ? 'اپنا کردار منتخب کریں' : 'Choose your role';
+  String get mainDevice => isUrdu ? 'مین ڈیوائس' : 'Main device';
+  String get orderTaker => isUrdu ? 'آرڈر ٹیکر' : 'Order taker';
+  String get kitchen => isUrdu ? 'کچن' : 'Kitchen';
+  String get cashier => isUrdu ? 'کیشیئر' : 'Cashier';
+  String get license => isUrdu ? 'لائسنس' : 'License';
+  String get continueApp => isUrdu ? 'جاری رکھیں' : 'Continue';
+  String get currentLicense => isUrdu ? 'موجودہ لائسنس' : 'Current license';
+  String get expires => isUrdu ? 'ختم' : 'Expires';
+  String get licenseHint => isUrdu ? 'XXXX-XXXX-XXXX-XXXX' : 'XXXX-XXXX-XXXX-XXXX';
+  String get offlineGrace => isUrdu ? 'آف لائن اجازت' : 'Offline grace';
 }

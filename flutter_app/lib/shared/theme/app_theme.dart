@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 class AppColors {
   static const primary = Color(0xFFF97316);
   static const primaryDark = Color(0xFFEA580C);
+  static const accent = Color(0xFFF97316);
   static const success = Color(0xFF16A34A);
   static const warn = Color(0xFFD97706);
+  static const warning = Color(0xFFD97706);
   static const danger = Color(0xFFDC2626);
+  static const muted = Color(0xFF64748B);
 }
 
 class AppTheme {
@@ -45,10 +48,17 @@ class AppTheme {
           brightness: Brightness.dark,
           primary: AppColors.primary,
         ),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          elevation: 0,
+        ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         ),
       );
