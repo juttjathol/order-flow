@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Optional existing tag to attach APK (e.g. v1.6.4). Leave empty for artifact only.'
+        description: 'Optional existing tag to attach APK (e.g. v1.6.5). Leave empty for artifact only.'
         required: false
         default: ''
 
@@ -45,13 +45,18 @@ jobs:
           if [ -f android/app/src/main/AndroidManifest.xml ]; then
             sed -i 's/<application /<application android:usesCleartextTraffic="true" /' android/app/src/main/AndroidManifest.xml || true
           fi
+          # Force compileSdk 36 + minSdk 23 (required by current Flutter plugins)
           if [ -f android/app/build.gradle ]; then
             sed -i -E 's/minSdk(Version)?[[:space:]]*=?[[:space:]]*[0-9]+/minSdkVersion 23/' android/app/build.gradle || true
-            sed -i -E 's/compileSdk(Version)?[[:space:]]*=?[[:space:]]*[0-9]+/compileSdkVersion 34/' android/app/build.gradle || true
+            sed -i -E 's/compileSdk(Version)?[[:space:]]*=?[[:space:]]*[0-9]+/compileSdkVersion 36/' android/app/build.gradle || true
           fi
           if [ -f android/app/build.gradle.kts ]; then
             sed -i 's/minSdk = .*/minSdk = 23/' android/app/build.gradle.kts || true
-            sed -i 's/compileSdk = .*/compileSdk = 34/' android/app/build.gradle.kts || true
+            sed -i 's/compileSdk = .*/compileSdk = 36/' android/app/build.gradle.kts || true
+            # Also handle if compileSdk is missing or uses different syntax
+            if ! grep -q 'compileSdk' android/app/build.gradle.kts; then
+              sed -i '/android {/a\    compileSdk = 36' android/app/build.gradle.kts || true
+            fi
           fi
 
       - name: Gradle memory settings
@@ -86,9 +91,18 @@ jobs:
               fi
             fi
             if grep -qE 'compileSdk(Version)?[[:space:]]+[0-9]+' "$f" 2>/dev/null; then
-              sed -i -E 's/compileSdk(Version)?[[:space:]]+[0-9]+/compileSdkVersion 34/' "$f" || true
+              sed -i -E 's/compileSdk(Version)?[[:space:]]+[0-9]+/compileSdkVersion 36/' "$f" || true
             fi
           done
+          # Re-assert app compileSdk after pub get (Flutter may rewrite)
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/compileSdk = .*/compileSdk = 36/' android/app/build.gradle.kts || true
+            grep compileSdk android/app/build.gradle.kts || true
+          fi
+          if [ -f android/app/build.gradle ]; then
+            sed -i -E 's/compileSdk(Version)?[[:space:]]*=?[[:space:]]*[0-9]+/compileSdkVersion 36/' android/app/build.gradle || true
+            grep compileSdk android/app/build.gradle || true
+          fi
 
       - name: Code generation (optional)
         working-directory: flutter_app
