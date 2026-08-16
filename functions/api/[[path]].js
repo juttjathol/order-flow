@@ -79,20 +79,58 @@ export async function onRequest(context) {
   const path = url.pathname;
   const secret = env.JWT_SECRET || 'dev-secret-change-me-in-production';
 
+  // Ensure binding columns exist (safe on every request)
+  try { await env.DB.prepare('ALTER TABLE licenses ADD COLUMN bound_device_id TEXT').run(); } catch (_) {}
+  try { await env.DB.prepare('ALTER TABLE licenses ADD COLUMN bound_at TEXT').run(); } catch (_) {}
+
   if (path === '/api/v1/license/validate' && request.method === 'POST') {
     try {
       const body = await request.json();
-      const { licenseKey } = body;
+      const licenseKey = (body.licenseKey || body.license_key || '').toString().trim();
+      const deviceId = (body.deviceId || body.device_id || '').toString().trim();
       if (!licenseKey) return error('licenseKey required');
+      if (!deviceId) return error('deviceId required');
+
       const row = await env.DB.prepare(
         'SELECT l.*, c.name as customer_name FROM licenses l JOIN customers c ON c.id = l.customer_id WHERE l.license_key = ?'
       ).bind(licenseKey).first();
       if (!row) return error('Invalid license', 401);
       if (!row.is_active) return error('License revoked', 403);
       if (new Date(row.expires_at) < new Date()) return error('License expired', 403);
-      await env.DB.prepare("UPDATE licenses SET last_validated_at = datetime('now'), validation_count = validation_count + 1 WHERE id = ?").bind(row.id).run();
-      return json({ valid: true, customerId: row.customer_id, customerName: row.customer_name, expiresAt: row.expires_at, maxDevices: row.max_devices });
-    } catch (e) { return error(e.message, 500); }
+
+      const bound = (row.bound_device_id || '').toString().trim();
+      let firstActivation = false;
+
+      if (!bound) {
+        // First Main device wins — bind permanently until admin resets
+        await env.DB.prepare(
+          "UPDATE licenses SET bound_device_id = ?, bound_at = datetime('now'), last_validated_at = datetime('now'), validation_count = COALESCE(validation_count, 0) + 1 WHERE id = ?"
+        ).bind(deviceId, row.id).run();
+        firstActivation = true;
+      } else if (bound !== deviceId) {
+        return error('This license is already activated on another device. Ask the seller to Reset device in the dashboard.', 403);
+      } else {
+        await env.DB.prepare(
+          "UPDATE licenses SET last_validated_at = datetime('now'), validation_count = COALESCE(validation_count, 0) + 1 WHERE id = ?"
+        ).bind(row.id).run();
+      }
+
+      try {
+        await env.DB.prepare(
+          'INSERT INTO validation_logs (license_id, device_id, ip, success, message) VALUES (?, ?, ?, 1, ?)'
+        ).bind(row.id, deviceId, request.headers.get('CF-Connecting-IP'), firstActivation ? 'first bind' : 'ok').run();
+      } catch (_) {}
+
+      return json({
+        valid: true,
+        customerId: row.customer_id,
+        customerName: row.customer_name,
+        expiresAt: row.expires_at,
+        maxDevices: row.max_devices,
+        firstActivation,
+        boundDeviceId: firstActivation ? deviceId : bound || deviceId,
+      });
+    } catch (e) { return error(e.message || 'validate failed', 500); }
   }
 
   if ((path === '/api/v1/download/android' || path === '/download/android') && request.method === 'GET') {
@@ -230,8 +268,15 @@ export async function onRequest(context) {
     return json({ licenses: results });
   }
   if (path.startsWith('/api/v1/licenses/') && request.method === 'PUT') {
-    const id = path.split('/').pop();
-    const body = await request.json();
+    const parts = path.split('/').filter(Boolean);
+    const id = parts[parts.length - 1] === 'reset-device' ? parts[parts.length - 2] : parts[parts.length - 1];
+    const body = await request.json().catch(() => ({}));
+    if (parts[parts.length - 1] === 'reset-device' || body.reset_device) {
+      try { await env.DB.prepare('ALTER TABLE licenses ADD COLUMN bound_device_id TEXT').run(); } catch (_) {}
+      try { await env.DB.prepare('ALTER TABLE licenses ADD COLUMN bound_at TEXT').run(); } catch (_) {}
+      await env.DB.prepare('UPDATE licenses SET bound_device_id = NULL, bound_at = NULL WHERE id = ?').bind(id).run();
+      return json({ ok: true, reset: true });
+    }
     if (body.is_active !== undefined) await env.DB.prepare('UPDATE licenses SET is_active = ? WHERE id = ?').bind(body.is_active ? 1 : 0, id).run();
     if (body.expires_at) await env.DB.prepare('UPDATE licenses SET expires_at = ? WHERE id = ?').bind(body.expires_at, id).run();
     return json({ ok: true });
