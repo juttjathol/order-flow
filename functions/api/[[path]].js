@@ -201,7 +201,7 @@ export async function onRequest(context) {
 
   if (path === '/api/v1/customers' && request.method === 'GET') {
     const { results } = await env.DB.prepare(
-      'SELECT c.*, (SELECT COUNT(*) FROM licenses l WHERE l.customer_id = c.id AND l.is_active = 1) as active_licenses FROM customers c ORDER BY created_at DESC'
+      'SELECT c.*, (SELECT COUNT(*) as c FROM licenses l WHERE l.customer_id = c.id AND l.is_active = 1) as active_licenses FROM customers c ORDER BY created_at DESC'
     ).all();
     return json({ customers: results });
   }
@@ -241,6 +241,38 @@ export async function onRequest(context) {
     const activeLicenses = await env.DB.prepare("SELECT COUNT(*) as c FROM licenses WHERE is_active = 1 AND expires_at > datetime('now')").first();
     const validationsToday = await env.DB.prepare("SELECT COUNT(*) as c FROM validation_logs WHERE date(created_at) = date('now') AND success = 1").first();
     return json({ totalCustomers: customers.c, activeLicenses: activeLicenses.c, validationsToday: validationsToday.c });
+  }
+
+  // DELETE customer + all their licenses and validation logs
+  if (path.startsWith('/api/v1/customers/') && request.method === 'DELETE') {
+    try {
+      const id = path.split('/').filter(Boolean).pop();
+      if (!id || id === 'customers') return error('customer id required');
+      try {
+        await env.DB.prepare(
+          'DELETE FROM validation_logs WHERE license_id IN (SELECT id FROM licenses WHERE customer_id = ?)'
+        ).bind(id).run();
+      } catch (_) {}
+      try {
+        await env.DB.prepare('DELETE FROM licenses WHERE customer_id = ?').bind(id).run();
+      } catch (e) { return error('Failed deleting licenses: ' + (e.message || e), 500); }
+      await env.DB.prepare('DELETE FROM customers WHERE id = ?').bind(id).run();
+      return json({ ok: true, deleted: id });
+    } catch (e) { return error(e.message || 'Delete customer failed', 500); }
+  }
+
+  // DELETE single license key
+  if (path.startsWith('/api/v1/licenses/') && request.method === 'DELETE') {
+    try {
+      const parts = path.split('/').filter(Boolean);
+      const id = parts[parts.length - 1];
+      if (!id || id === 'licenses') return error('license id required');
+      try {
+        await env.DB.prepare('DELETE FROM validation_logs WHERE license_id = ?').bind(id).run();
+      } catch (_) {}
+      await env.DB.prepare('DELETE FROM licenses WHERE id = ?').bind(id).run();
+      return json({ ok: true, deleted: id });
+    } catch (e) { return error(e.message || 'Delete license failed', 500); }
   }
 
   return error('Not found', 404);
