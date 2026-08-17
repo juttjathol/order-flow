@@ -11,6 +11,7 @@ import '../models/models.dart';
 import '../models/models_extra.dart';
 import '../network/local_server.dart';
 import '../services/print_service.dart';
+import '../config/app_config.dart';
 
 const _uuid = Uuid();
 
@@ -30,11 +31,20 @@ class AppController extends ChangeNotifier {
   List<DeviceInfo> devices = [];
   LicenseInfo? license;
   String localeCode = 'en';
-  bool get hasLicense => license != null;
+  bool licenseLocked = false;
+  DateTime? lastOnlineValidation;
+  String businessModel = 'restaurant';
+  List<Map<String, dynamic>> drivers = [];
   LocalServer? _server;
   WebSocketChannel? _ws;
   StreamSubscription? _wsSub;
   Timer? _persistDebounce;
+
+  bool get hasLicense {
+    if (clientConnected && !isMain) return true;
+    if (licenseLocked) return false;
+    return license != null;
+  }
 
   String get joinUrl => 'http://${localIp ?? '0.0.0.0'}:$port';
   String get restaurantName => bill.restaurantName;
@@ -69,10 +79,15 @@ class AppController extends ChangeNotifier {
       license = LicenseInfo(key: k, customerId: p.getString('license_customer_id') ?? '', customerName: p.getString('license_customer_name') ?? '', expiresAt: DateTime.tryParse(p.getString('license_expires') ?? '') ?? DateTime.now().add(const Duration(days: 30)), isActive: true);
     }
     localeCode = p.getString('locale_code') ?? 'en';
+    licenseLocked = p.getBool('license_locked') ?? false;
+    businessModel = p.getString('business_model') ?? 'restaurant';
+    final lov = p.getString('last_online_validation');
+    if (lov != null) lastOnlineValidation = DateTime.tryParse(lov);
     final saved = p.getString('main_state_json');
     if (saved != null && saved.isNotEmpty) {
       try { applyState(jsonDecode(saved) as Map<String, dynamic>); } catch (_) { _seed(); }
     } else { _seed(); }
+    if (license != null && !licenseLocked) unawaited(revalidateLicenseIfNeeded());
     notifyListeners();
   }
 
@@ -132,6 +147,7 @@ class AppController extends ChangeNotifier {
     'restaurantName': bill.restaurantName,
     'kitchenPrinterIp': kitchenPrinterIp,
     'cashierPrinterIp': cashierPrinterIp,
+    'businessModel': businessModel,
   };
 
   void applyState(Map<String, dynamic> s) {
@@ -144,21 +160,16 @@ class AppController extends ChangeNotifier {
     else if (s['restaurantName'] is String) bill = BillProfile(restaurantName: s['restaurantName'] as String, address: bill.address, phone: bill.phone, taxId: bill.taxId, footer: bill.footer, currencySymbol: bill.currencySymbol);
     if (s.containsKey('kitchenPrinterIp')) kitchenPrinterIp = s['kitchenPrinterIp'] as String?;
     if (s.containsKey('cashierPrinterIp')) cashierPrinterIp = s['cashierPrinterIp'] as String?;
+    if (s['businessModel'] is String) businessModel = s['businessModel'] as String;
     if (categories.isEmpty) _seed();
     notifyListeners();
   }
 
-  /// Full JSON backup of menu, orders, inventory, bill profile.
   String exportBackupJson() {
-    final map = {
-      ...fullState(),
-      'exportedAt': DateTime.now().toUtc().toIso8601String(),
-      'version': 1,
-    };
+    final map = {...fullState(), 'exportedAt': DateTime.now().toUtc().toIso8601String(), 'version': 1};
     return const JsonEncoder.withIndent('  ').convert(map);
   }
 
-  /// Restore from backup JSON. Returns number of top-level keys applied.
   int importBackupJson(String raw) {
     final decoded = jsonDecode(raw);
     if (decoded is! Map) throw const FormatException('Backup must be a JSON object');
@@ -395,72 +406,6 @@ class AppController extends ChangeNotifier {
     _server?.broadcast('state.replace', fullState()); _schedulePersist(); notifyListeners();
   }
 
-  int importInventoryCsv(String raw, {bool replaceAll = false}) {
-    if (!isMain) return 0;
-    final lines = raw.split(RegExp(r'[\r\n]+')).map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
-    if (lines.isEmpty) return 0;
-    var start = 0;
-    final first = lines.first.toLowerCase();
-    if (first.contains('name') && (first.contains('qty') || first.contains('quantity') || first.contains(','))) start = 1;
-    final imported = <InventoryItem>[];
-    for (var i = start; i < lines.length; i++) {
-      final parts = lines[i].contains('\t') ? lines[i].split('\t') : _parseCsvLine(lines[i]);
-      if (parts.isEmpty) continue;
-      final name = parts[0].trim();
-      if (name.isEmpty) continue;
-      final qty = (parts.length > 1 ? double.tryParse(parts[1].trim().replaceAll(',', '')) : null) ?? 0.0;
-      final unit = parts.length > 2 && parts[2].trim().isNotEmpty ? parts[2].trim() : 'pcs';
-      final low = (parts.length > 3 ? double.tryParse(parts[3].trim().replaceAll(',', '')) : null) ?? 5.0;
-      imported.add(InventoryItem(name: name, quantity: qty, unit: unit, lowStockThreshold: low));
-    }
-    if (imported.isEmpty) return 0;
-    if (replaceAll) { inventory = imported; }
-    else {
-      for (final item in imported) {
-        final idx = inventory.indexWhere((e) => e.name.toLowerCase() == item.name.toLowerCase());
-        if (idx >= 0) {
-          inventory = [...inventory]..[idx] = InventoryItem(id: inventory[idx].id, name: item.name, unit: item.unit, quantity: item.quantity, lowStockThreshold: item.lowStockThreshold, linkedMenuItemId: inventory[idx].linkedMenuItemId);
-        } else { inventory = [...inventory, item]; }
-      }
-    }
-    _server?.broadcast('state.replace', fullState()); _schedulePersist(); notifyListeners();
-    return imported.length;
-  }
-
-  List<String> _parseCsvLine(String line) {
-    final result = <String>[];
-    final sb = StringBuffer();
-    var inQuotes = false;
-    for (var i = 0; i < line.length; i++) {
-      final c = line[i];
-      if (c == '"') { inQuotes = !inQuotes; }
-      else if ((c == ',' && !inQuotes) || (c == ';' && !inQuotes)) { result.add(sb.toString()); sb.clear(); }
-      else { sb.write(c); }
-    }
-    result.add(sb.toString());
-    return result;
-  }
-
-  int importInventoryLines(String raw) {
-    final buf = StringBuffer();
-    for (final line in raw.split(RegExp(r'[\r\n]+'))) {
-      final t = line.trim();
-      if (t.isEmpty) continue;
-      final m = RegExp(r'^(.+?)\s+(\d+(?:\.\d+)?)\s*$').firstMatch(t);
-      if (m != null) buf.writeln('${m.group(1)},${m.group(2)},pcs,5');
-      else buf.writeln('$t,0,pcs,5');
-    }
-    return importInventoryCsv(buf.toString());
-  }
-
-  Map<String, dynamic> salesReport({int days = 1}) {
-    final now = DateTime.now().toUtc();
-    final start = DateTime.utc(now.year, now.month, now.day).subtract(Duration(days: days - 1));
-    final paid = orders.where((o) => o.isPaid && o.paidAt != null && !o.paidAt!.isBefore(start)).toList();
-    final total = paid.fold<double>(0, (s, o) => s + o.total.asDouble);
-    return {'days': days, 'orders': paid.length, 'total': total, 'currency': bill.currencySymbol, 'lowStock': lowStockItems.length};
-  }
-
   Future<void> setLocale(String code) async {
     localeCode = (code == 'ur') ? 'ur' : 'en';
     final p = await SharedPreferences.getInstance();
@@ -468,36 +413,70 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> registerSignup({required String name, required String email}) async {
-    final n = name.trim();
-    final e = email.trim().toLowerCase();
-    if (n.isEmpty && e.isEmpty) return;
+  Future<void> setBusinessModel(String model) async {
+    businessModel = model;
+    final p = await SharedPreferences.getInstance();
+    await p.setString('business_model', model);
+    if (isMain) _server?.broadcast('state.replace', fullState());
+    notifyListeners();
+  }
+
+  Future<void> setLicenseLocked(bool v) async {
+    licenseLocked = v;
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('license_locked', v);
+    if (v) {
+      license = null;
+      await p.remove('license_key');
+    }
+    notifyListeners();
+  }
+
+  Future<void> revalidateLicenseIfNeeded() async {
+    if (license == null || license!.key.isEmpty) return;
+    final now = DateTime.now().toUtc();
+    if (lastOnlineValidation != null) {
+      final hours = now.difference(lastOnlineValidation!).inHours;
+      if (hours < kLicenseHeartbeatHours) return;
+    }
     try {
-      await http
-          .post(
-            Uri.parse('$licenseApiBase/api/v1/signup'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'name': n.isEmpty ? (e.isNotEmpty ? e.split('@').first : 'Restaurant') : n,
-              'email': e.isEmpty ? null : e,
-              'deviceId': deviceId,
-            }),
-          )
-          .timeout(const Duration(seconds: 10));
-    } catch (_) {}
+      final res = await http.post(
+        Uri.parse('$licenseApiBase/api/v1/license/validate'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'licenseKey': license!.key, 'deviceId': deviceId}),
+      ).timeout(const Duration(seconds: 12));
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      if (res.statusCode == 401 || res.statusCode == 403 || data['valid'] != true) {
+        await setLicenseLocked(true);
+        licenseMessage = data['error']?.toString() ?? 'License no longer valid';
+        return;
+      }
+      lastOnlineValidation = now;
+      final p = await SharedPreferences.getInstance();
+      await p.setString('last_online_validation', now.toIso8601String());
+      await p.setBool('license_locked', false);
+      licenseLocked = false;
+      notifyListeners();
+    } catch (_) {
+      if (lastOnlineValidation != null) {
+        final hours = now.difference(lastOnlineValidation!).inHours;
+        if (hours > kLicenseGraceHours) {
+          await setLicenseLocked(true);
+          licenseMessage = 'License check expired offline. Contact support on WhatsApp.';
+        }
+      }
+    }
   }
 
   Future<bool> activateLicense(String key) async {
     licenseMessage = null;
     notifyListeners();
     try {
-      final res = await http
-          .post(
-            Uri.parse('$licenseApiBase/api/v1/license/validate'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'licenseKey': key.trim(), 'deviceId': deviceId}),
-          )
-          .timeout(const Duration(seconds: 12));
+      final res = await http.post(
+        Uri.parse('$licenseApiBase/api/v1/license/validate'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'licenseKey': key.trim(), 'deviceId': deviceId}),
+      ).timeout(const Duration(seconds: 12));
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final p = await SharedPreferences.getInstance();
 
@@ -505,29 +484,23 @@ class AppController extends ChangeNotifier {
         final err = data['error']?.toString() ?? 'Invalid license';
         licenseMessage = err;
         if (res.statusCode == 401 || res.statusCode == 403) {
-          license = null;
-          notifyListeners();
+          await setLicenseLocked(true);
           return false;
         }
-        license = LicenseInfo(
-          key: key.trim(),
-          customerId: '',
-          customerName: 'Pending',
-          expiresAt: DateTime.now().add(const Duration(days: 3)),
-          isActive: true,
-        );
-        await p.setString('license_key', key.trim());
         notifyListeners();
         return false;
       }
 
       await p.setString('license_key', key.trim());
+      await p.setBool('license_locked', false);
+      licenseLocked = false;
+      lastOnlineValidation = DateTime.now().toUtc();
+      await p.setString('last_online_validation', lastOnlineValidation!.toIso8601String());
       license = LicenseInfo(
         key: key.trim(),
         customerId: '${data['customerId'] ?? ''}',
         customerName: '${data['customerName'] ?? ''}',
-        expiresAt: DateTime.tryParse('${data['expiresAt']}') ??
-            DateTime.now().add(const Duration(days: 30)),
+        expiresAt: DateTime.tryParse('${data['expiresAt']}') ?? DateTime.now().add(const Duration(days: 30)),
         isActive: true,
         lastValidatedAt: DateTime.now().toUtc(),
       );
@@ -536,28 +509,26 @@ class AppController extends ChangeNotifier {
       await p.setString('license_expires', license!.expiresAt.toIso8601String());
       final first = data['firstActivation'] == true;
       licenseMessage = first
-          ? 'Activated & bound to this device until ${license!.expiresAt.toLocal().toString().split(' ').first}'
+          ? 'Activated & bound until ${license!.expiresAt.toLocal().toString().split(' ').first}'
           : 'License active until ${license!.expiresAt.toLocal().toString().split(' ').first}';
       notifyListeners();
       return true;
     } catch (e) {
       final p = await SharedPreferences.getInstance();
       final stored = p.getString('license_key');
-      if (stored != null && stored == key.trim()) {
+      if (stored != null && stored == key.trim() && !(p.getBool('license_locked') ?? false)) {
         license = LicenseInfo(
           key: key.trim(),
           customerId: p.getString('license_customer_id') ?? '',
           customerName: p.getString('license_customer_name') ?? 'Offline grace',
-          expiresAt: DateTime.tryParse(p.getString('license_expires') ?? '') ??
-              DateTime.now().add(const Duration(days: 14)),
+          expiresAt: DateTime.tryParse(p.getString('license_expires') ?? '') ?? DateTime.now().add(const Duration(days: 2)),
           isActive: true,
         );
-        licenseMessage = 'Offline – using saved license (reconnect to re-validate).';
+        licenseMessage = 'Offline – using saved license (48h grace).';
         notifyListeners();
         return true;
       }
-      licenseMessage = 'Need internet once to activate. Then works offline.';
-      license = null;
+      licenseMessage = 'Need internet once to activate.';
       notifyListeners();
       return false;
     }
