@@ -1,7 +1,7 @@
 name: order_flow
 description: Order Flow – Offline-first multi-device order taking for restaurants
 publish_to: 'none'
-version: 1.6.5+14
+version: 1.7.0+15
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
