@@ -37,7 +37,7 @@ class OrderFlowApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.dark,
       routerConfig: _router,
       builder: (context, child) {
         return Directionality(
@@ -61,10 +61,14 @@ class RoleSelectScreen extends ConsumerWidget {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (context.mounted) context.go('/license');
       });
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(
+        backgroundColor: AppColors.bg,
+        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
     }
 
     return Scaffold(
+      backgroundColor: AppColors.bg,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(24),
@@ -81,16 +85,16 @@ class RoleSelectScreen extends ConsumerWidget {
                                   fontSize: 24,
                                   fontWeight: FontWeight.w700,
                                   height: 1.7,
-                                  color: const Color(0xFF0F172A))
+                                  color: AppColors.text)
                               : const TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A))),
+                                  color: AppColors.text)),
                       Text(s.chooseRole,
                           style: s.isUrdu
                               ? GoogleFonts.notoNastaliqUrdu(
                                   color: AppColors.muted, fontSize: 15, height: 1.6)
-                              : TextStyle(color: Colors.grey.shade600)),
+                              : const TextStyle(color: AppColors.muted)),
                     ],
                   ),
                 ),
@@ -99,8 +103,8 @@ class RoleSelectScreen extends ConsumerWidget {
                   child: Text(
                     app.localeCode == 'ur' ? 'EN' : 'اردو',
                     style: app.localeCode == 'en'
-                        ? GoogleFonts.notoNastaliqUrdu(fontWeight: FontWeight.w700)
-                        : const TextStyle(fontWeight: FontWeight.w800),
+                        ? GoogleFonts.notoNastaliqUrdu(fontWeight: FontWeight.w700, color: AppColors.primary)
+                        : const TextStyle(fontWeight: FontWeight.w800, color: AppColors.primary),
                   ),
                 ),
               ],
@@ -149,8 +153,8 @@ class RoleSelectScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             TextButton.icon(
               onPressed: () => context.go('/license'),
-              icon: const Icon(Icons.vpn_key_rounded, size: 18),
-              label: Text(s.license),
+              icon: const Icon(Icons.vpn_key_rounded, size: 18, color: AppColors.muted),
+              label: Text(s.license, style: const TextStyle(color: AppColors.muted)),
             ),
           ],
         ),
@@ -178,10 +182,10 @@ class _RoleCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
-        color: Colors.white,
+        color: AppColors.card,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: Colors.grey.shade200),
+          side: const BorderSide(color: AppColors.border),
         ),
         child: InkWell(
           onTap: onTap,
@@ -193,7 +197,7 @@ class _RoleCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
+                    color: color.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(icon, color: color, size: 28),
@@ -205,13 +209,13 @@ class _RoleCard extends StatelessWidget {
                     children: [
                       Text(title,
                           style: const TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                              fontSize: 17, fontWeight: FontWeight.w800, color: AppColors.text)),
                       const SizedBox(height: 2),
-                      Text(subtitle, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                      Text(subtitle, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+                const Icon(Icons.chevron_right_rounded, color: AppColors.muted),
               ],
             ),
           ),
