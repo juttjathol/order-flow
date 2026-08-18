@@ -322,12 +322,6 @@ class AppController extends ChangeNotifier {
     return order;
   }
 
-  Order? findOpenByTable(String table) {
-    final t = table.trim().toLowerCase();
-    if (t.isEmpty) return null;
-    try { return openOrders.firstWhere((o) => (o.tableNumber ?? '').trim().toLowerCase() == t); } catch (_) { return null; }
-  }
-
   void addItemsToOrder(String orderId, List<OrderItem> extra) {
     if (extra.isEmpty) return;
     if (isMain) { _applyAddItems(orderId, extra); }
@@ -404,6 +398,72 @@ class AppController extends ChangeNotifier {
     if (!isMain) return;
     inventory = inventory.where((i) => i.id != id).toList();
     _server?.broadcast('state.replace', fullState()); _schedulePersist(); notifyListeners();
+  }
+
+  int importInventoryCsv(String raw, {bool replaceAll = false}) {
+    if (!isMain) return 0;
+    final lines = raw.split(RegExp(r'[\r\n]+')).map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+    if (lines.isEmpty) return 0;
+    var start = 0;
+    final first = lines.first.toLowerCase();
+    if (first.contains('name') && (first.contains('qty') || first.contains('quantity') || first.contains(','))) start = 1;
+    final imported = <InventoryItem>[];
+    for (var i = start; i < lines.length; i++) {
+      final parts = lines[i].contains('\t') ? lines[i].split('\t') : _parseCsvLine(lines[i]);
+      if (parts.isEmpty) continue;
+      final name = parts[0].trim();
+      if (name.isEmpty) continue;
+      final qty = (parts.length > 1 ? double.tryParse(parts[1].trim().replaceAll(',', '')) : null) ?? 0.0;
+      final unit = parts.length > 2 && parts[2].trim().isNotEmpty ? parts[2].trim() : 'pcs';
+      final low = (parts.length > 3 ? double.tryParse(parts[3].trim().replaceAll(',', '')) : null) ?? 5.0;
+      imported.add(InventoryItem(name: name, quantity: qty, unit: unit, lowStockThreshold: low));
+    }
+    if (imported.isEmpty) return 0;
+    if (replaceAll) { inventory = imported; }
+    else {
+      for (final item in imported) {
+        final idx = inventory.indexWhere((e) => e.name.toLowerCase() == item.name.toLowerCase());
+        if (idx >= 0) {
+          inventory = [...inventory]..[idx] = InventoryItem(id: inventory[idx].id, name: item.name, unit: item.unit, quantity: item.quantity, lowStockThreshold: item.lowStockThreshold, linkedMenuItemId: inventory[idx].linkedMenuItemId);
+        } else { inventory = [...inventory, item]; }
+      }
+    }
+    _server?.broadcast('state.replace', fullState()); _schedulePersist(); notifyListeners();
+    return imported.length;
+  }
+
+  List<String> _parseCsvLine(String line) {
+    final result = <String>[];
+    final sb = StringBuffer();
+    var inQuotes = false;
+    for (var i = 0; i < line.length; i++) {
+      final c = line[i];
+      if (c == '"') { inQuotes = !inQuotes; }
+      else if ((c == ',' && !inQuotes) || (c == ';' && !inQuotes)) { result.add(sb.toString()); sb.clear(); }
+      else { sb.write(c); }
+    }
+    result.add(sb.toString());
+    return result;
+  }
+
+  int importInventoryLines(String raw) {
+    final buf = StringBuffer();
+    for (final line in raw.split(RegExp(r'[\r\n]+'))) {
+      final t = line.trim();
+      if (t.isEmpty) continue;
+      final m = RegExp(r'^(.+?)\s+(\d+(?:\.\d+)?)\s*$').firstMatch(t);
+      if (m != null) buf.writeln('${m.group(1)},${m.group(2)},pcs,5');
+      else buf.writeln('$t,0,pcs,5');
+    }
+    return importInventoryCsv(buf.toString());
+  }
+
+  Map<String, dynamic> salesReport({int days = 1}) {
+    final now = DateTime.now().toUtc();
+    final start = DateTime.utc(now.year, now.month, now.day).subtract(Duration(days: days - 1));
+    final paid = orders.where((o) => o.isPaid && o.paidAt != null && !o.paidAt!.isBefore(start)).toList();
+    final total = paid.fold<double>(0, (s, o) => s + o.total.asDouble);
+    return {'days': days, 'orders': paid.length, 'total': total, 'currency': bill.currencySymbol, 'lowStock': lowStockItems.length};
   }
 
   Future<void> setLocale(String code) async {
