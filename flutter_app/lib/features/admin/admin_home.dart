@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/models/models.dart';
+import '../../core/services/print_service.dart';
 import '../../core/state/app_controller.dart';
 import '../../shared/theme/app_theme.dart';
 import '../../shared/widgets/animated_widgets.dart';
@@ -67,7 +68,10 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
             TextField(controller: tax, decoration: const InputDecoration(labelText: 'Tax ID')),
             TextField(controller: footer, decoration: const InputDecoration(labelText: 'Footer')),
             TextField(controller: cur, decoration: const InputDecoration(labelText: 'Currency')),
-            Wrap(spacing: 6, children: ['\\$', '€', '£', 'Rs', 'RM', 'AED', '₹'].map((s) => ActionChip(label: Text(s), onPressed: () => setLocal(() => cur.text = s))).toList()),
+            Wrap(spacing: 6, children: [r'$$', '€', '£', 'Rs', 'RM', 'AED', '₹'].map((s) {
+              final sym = s == r'$$' ? r'$' : s;
+              return ActionChip(label: Text(sym), onPressed: () => setLocal(() => cur.text = sym));
+            }).toList()),
             TextField(controller: kitchen, decoration: const InputDecoration(labelText: 'Kitchen printer IP')),
             TextField(controller: cashier, decoration: const InputDecoration(labelText: 'Cashier printer IP')),
             FilledButton(onPressed: () async {
@@ -79,7 +83,7 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
                   phone: phone.text.trim(),
                   taxId: tax.text.trim(),
                   footer: footer.text.trim().isEmpty ? 'Thank you!' : footer.text.trim(),
-                  currencySymbol: cur.text.trim().isEmpty ? '\\$' : cur.text.trim(),
+                  currencySymbol: cur.text.trim().isEmpty ? r'$' : cur.text.trim(),
                 ),
                 kitchenIp: kitchen.text.trim(),
                 cashierIp: cashier.text.trim(),
@@ -157,7 +161,6 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
       const SizedBox(height: 80),
     ]);
 
-    // Tables map
     final occupied = <String, Order>{};
     for (final o in app.openOrders) {
       final t = (o.tableNumber ?? '').trim();
@@ -199,7 +202,6 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
       ),
     ]);
 
-    // Menu grid
     Widget menu = Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -259,7 +261,6 @@ class _AdminHomeState extends ConsumerState<AdminHome> {
       ),
     ]);
 
-    // Inventory list (orders-style cards)
     Widget stock = Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
